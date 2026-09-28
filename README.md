@@ -38,3 +38,5 @@ LazyNote/              主 App
 LazyNoteShare/         Share Extension（截圖入口）
 project.yml            XcodeGen 專案定義
 ```
+
+>my first git practice
