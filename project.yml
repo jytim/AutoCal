@@ -1,0 +1,71 @@
+name: LazyNote
+options:
+  bundleIdPrefix: com.jiangyanting.lazynote
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  LazyNote:
+    type: application
+    platform: iOS
+    sources:
+      - path: LazyNote
+    info:
+      path: LazyNote/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # EventKit 權限說明（iOS 17+ full access）
+        NSCalendarsFullAccessUsageDescription: "LazyNote 需要行事曆權限，才能把辨識出的行程加入你的行事曆。"
+        NSRemindersFullAccessUsageDescription: "LazyNote 需要提醒事項權限，才能把辨識出的待辦加入你的提醒事項。"
+        NSMicrophoneUsageDescription: "LazyNote 需要麥克風權限，才能用語音輸入行程。"
+        NSSpeechRecognitionUsageDescription: "LazyNote 使用語音辨識，把你說的話轉成文字。"
+        # 允許連家裡區網的 HTTP 模型伺服器（僅本機/區網位址）
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jiangyanting.lazynote
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - target: LazyNoteShare
+
+  LazyNoteShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LazyNoteShare
+      # 與主 App 共用的解析與寫入程式
+      - path: LazyNote/Models
+      - path: LazyNote/Services
+      - path: LazyNote/ItemCard.swift
+    info:
+      path: LazyNoteShare/Info.plist
+      properties:
+        CFBundleDisplayName: LazyNote
+        NSCalendarsFullAccessUsageDescription: "LazyNote 需要行事曆權限，才能把辨識出的行程加入你的行事曆。"
+        NSRemindersFullAccessUsageDescription: "LazyNote 需要提醒事項權限，才能把辨識出的待辦加入你的提醒事項。"
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsImageWithMaxCount: 4
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jiangyanting.lazynote.share
+        GENERATE_INFOPLIST_FILE: NO
