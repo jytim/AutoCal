@@ -10,9 +10,9 @@ xcuserdata/
 
 # XcodeGen 會用 project.yml 重新產生，不需要進版本庫
 # （之後 clone 下來只要跑 `xcodegen generate` 就會重建）
-LazyNote.xcodeproj/
-LazyNote/Info.plist
-LazyNoteShare/Info.plist
+AutoCal.xcodeproj/
+AutoCal/Info.plist
+AutoCalShare/Info.plist
 
 # Swift Package Manager
 .build/

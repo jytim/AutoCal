@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct LazyNoteApp: App {
+struct AutoCalApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
