@@ -18,7 +18,7 @@ struct ShareRootView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("LazyNote")
+                .navigationTitle("AutoCal")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {

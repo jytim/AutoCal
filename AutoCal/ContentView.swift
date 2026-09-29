@@ -83,7 +83,7 @@ struct ContentView: View {
                 }
                 .padding()
             }
-            .navigationTitle("LazyNote")
+            .navigationTitle("AutoCal")
         }
     }
 

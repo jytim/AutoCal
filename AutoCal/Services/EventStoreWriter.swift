@@ -19,13 +19,13 @@ final class EventStoreWriter {
 
         if needsCalendar {
             guard try await store.requestFullAccessToEvents() else {
-                throw NSError(domain: "LazyNote", code: 1,
+                throw NSError(domain: "AutoCal", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "沒有行事曆權限"])
             }
         }
         if needsReminder {
             guard try await store.requestFullAccessToReminders() else {
-                throw NSError(domain: "LazyNote", code: 2,
+                throw NSError(domain: "AutoCal", code: 2,
                               userInfo: [NSLocalizedDescriptionKey: "沒有提醒事項權限"])
             }
         }
