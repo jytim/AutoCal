@@ -2,8 +2,7 @@ import SwiftUI
 
 /// Share Extension 的主畫面：辨識截圖 → 顯示可編輯確認卡片 → 寫入行事曆/提醒事項。
 struct ShareRootView: View {
-    let imageData: Data?
-    let mimeType: String
+    let input: SharedInput
     let onClose: () -> Void
 
     @State private var items: [ParsedItem] = []
@@ -35,7 +34,7 @@ struct ShareRootView: View {
         case .loading:
             VStack(spacing: 16) {
                 ProgressView()
-                Text("正在辨識截圖…").foregroundStyle(.secondary)
+                Text(loadingText).foregroundStyle(.secondary)
             }
         case .review:
             ScrollView {
@@ -72,14 +71,24 @@ struct ShareRootView: View {
         }
     }
 
+    private var loadingText: String {
+        if case .text = input { return "正在辨識文字…" }
+        return "正在辨識截圖…"
+    }
+
     private func analyze() async {
-        guard let data = imageData else {
-            message = "找不到圖片"; phase = .failed; return
-        }
         do {
-            let result = try await llm.parse(imageData: data, mimeType: mimeType)
+            let result: [ParsedItem]
+            switch input {
+            case .image(let data, let mime):
+                result = try await llm.parse(imageData: data, mimeType: mime)
+            case .text(let text):
+                result = try await llm.parse(text: text)
+            case .none:
+                message = "找不到可辨識的內容"; phase = .failed; return
+            }
             if result.isEmpty {
-                message = "截圖裡沒有找到行程或待辦"; phase = .failed
+                message = "沒有找到行程或待辦"; phase = .failed
             } else {
                 items = result; phase = .review
             }

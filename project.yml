@@ -63,8 +63,15 @@ targets:
           NSExtensionPointIdentifier: com.apple.share-services
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
           NSExtensionAttributes:
-            NSExtensionActivationRule:
-              NSExtensionActivationSupportsImageWithMaxCount: 4
+            # 圖片「或」文字「或」網址都可觸發（字典形式會被當成 AND，故改用 predicate）
+            NSExtensionActivationRule: >-
+              SUBQUERY(extensionItems, $item,
+                SUBQUERY($item.attachments, $att,
+                  ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.image"
+                  OR ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.text"
+                  OR ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+                ).@count >= 1
+              ).@count == 1
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jiangyanting.autocal.share
