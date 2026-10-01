@@ -43,6 +43,35 @@ struct LLMClient {
         return try await send(messages: messages, maxTokens: 1200)
     }
 
+    /// 從校園行事曆事件清單中，挑出符合查詢的事件並轉成 ParsedItem。
+    func matchCalendar(query: String, events: [CampusEvent], now: Date = Date()) async throws -> [ParsedItem] {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "zh_TW")
+        df.timeZone = TimeZone(identifier: "Asia/Taipei")
+        df.dateFormat = "yyyy-MM-dd"
+        let list = events.map { e -> String in
+            let endStr = e.end.map { "～" + df.string(from: $0) } ?? ""
+            return "\(df.string(from: e.start))\(endStr) \(e.title)"
+        }.joined(separator: "\n")
+
+        let system = """
+        \(Self.systemPrompt(now: now))
+
+        額外規則：以下「行事曆」是學校公開行事曆的事件清單（每行：日期 事件名稱）。
+        使用者會給一個查詢，請從清單中挑出「最符合查詢」的事件（可多筆），轉成上面的 JSON 陣列。
+        - start 用該事件的日期；若事件名稱寫「(至X月X日截止)」，把 end 設為那個截止日。
+        - title 用精簡名稱，去掉括號裡的附註（例如「期中考試開始(至10月24日截止)(若教師…)」→「期中考試」）。
+        - 這類全校日期沒有明確時間，allDay 設 true。
+        - 找不到相符的事件就回空陣列 []。不要自己發明清單上沒有的事件。
+        """
+        let user = "行事曆：\n\(list)\n\n查詢：\(query)"
+        let messages: [[String: Any]] = [
+            ["role": "system", "content": system],
+            ["role": "user", "content": user]
+        ]
+        return try await send(messages: messages, maxTokens: 800)
+    }
+
     // MARK: - 共用送出邏輯
 
     private func send(messages: [[String: Any]], maxTokens: Int = 800) async throws -> [ParsedItem] {
