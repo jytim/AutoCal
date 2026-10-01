@@ -11,6 +11,7 @@ final class InputViewModel: ObservableObject {
     private let llm = LLMClient()
     private let writer = EventStoreWriter()
     private let campus = CampusCalendarService()
+    private let web = WebSearchService()
 
     func parse() async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -43,6 +44,22 @@ final class InputViewModel: ObservableObject {
         isParsing = false
     }
 
+    /// 把輸入當成查詢，上網搜尋活動。
+    func searchWeb() async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        isParsing = true
+        errorMessage = nil
+        successMessage = nil
+        do {
+            items = try await web.search(query: trimmed)
+            if items.isEmpty { errorMessage = "網路上找不到「\(trimmed)」的明確活動資訊。" }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isParsing = false
+    }
+
     func save() async {
         errorMessage = nil
         do {
@@ -65,6 +82,7 @@ final class InputViewModel: ObservableObject {
 
 struct ContentView: View {
     @StateObject private var vm = InputViewModel()
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -101,6 +119,14 @@ struct ContentView: View {
                 .padding()
             }
             .navigationTitle("AutoCal")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
+            }
+            .sheet(isPresented: $showSettings) { SettingsView() }
         }
     }
 
@@ -129,6 +155,16 @@ struct ContentView: View {
                     Task { await vm.searchCampus() }
                 } label: {
                     Label("查校園行事曆", systemImage: "graduationcap")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(vm.text.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Button {
+                    Task { await vm.searchWeb() }
+                } label: {
+                    Label("搜尋網路活動", systemImage: "globe")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
