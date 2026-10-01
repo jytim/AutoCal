@@ -21,4 +21,9 @@ enum AppConfig {
             ?? "https://www.academic.ntust.edu.tw/var/file/48/1048/img/788923882.ics"
         return URL(string: s)
     }
+
+    /// Brave 搜尋 API 金鑰。只存在本機 UserDefaults，不進版本庫。
+    static var braveAPIKey: String? {
+        UserDefaults.standard.string(forKey: "brave.apiKey")
+    }
 }

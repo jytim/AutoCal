@@ -72,6 +72,29 @@ struct LLMClient {
         return try await send(messages: messages, maxTokens: 800)
     }
 
+    /// 從網路搜尋結果（摘要 + 網頁內容）抽出符合查詢的活動。
+    func extractFromWeb(query: String, snippets: String, pages: String,
+                        now: Date = Date()) async throws -> [ParsedItem] {
+        let system = """
+        \(Self.systemPrompt(now: now))
+
+        額外規則：以下是針對使用者查詢的網路搜尋結果（摘要與網頁內容）。
+        請根據這些資料，抽出和查詢最相關的活動（日期、時間、地點），轉成上面的 JSON 陣列。
+        - 只根據資料裡實際出現的資訊，不要自己編造日期。資料裡沒有明確日期就不要輸出那一筆。
+        - 若只有日期沒有時間，allDay 設 true。
+        - 把資料來源的重點（例如網址）放進 notes 以便查證（若 JSON 有 notes 欄位則填，否則省略）。
+        - 找不到可靠的活動就回空陣列 []。
+        """
+        var user = "查詢：\(query)\n\n搜尋摘要：\n\(snippets)"
+        if !pages.isEmpty { user += "\n\n網頁內容：\n\(pages)" }
+
+        let messages: [[String: Any]] = [
+            ["role": "system", "content": system],
+            ["role": "user", "content": user]
+        ]
+        return try await send(messages: messages, maxTokens: 1000)
+    }
+
     // MARK: - 共用送出邏輯
 
     private func send(messages: [[String: Any]], maxTokens: Int = 800) async throws -> [ParsedItem] {
