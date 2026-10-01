@@ -4,14 +4,15 @@ import Foundation
 /// 之後可做成設定畫面讓使用者修改；先用 UserDefaults 覆寫。
 enum AppConfig {
     static var baseURL: URL {
+        // 預設用 192.168.0.45 的 MoE 伺服器（比 3090 快約 12 倍，也支援看圖）。
         let s = UserDefaults.standard.string(forKey: "llm.baseURL")
-            ?? "http://192.168.2.230:8990/v1"
+            ?? "http://192.168.0.45:8990/v1"
         return URL(string: s)!
     }
 
     static var model: String {
         UserDefaults.standard.string(forKey: "llm.model")
-            ?? "/home/wahaha/models/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf"
+            ?? "nvidia-Qwen3.6-35B-A3B-NVFP4"
     }
 
     /// 校園行事曆（ICS 格式）。預設為台科大 114 學年度行事曆。
