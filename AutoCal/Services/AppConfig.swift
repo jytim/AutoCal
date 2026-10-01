@@ -3,16 +3,24 @@ import Foundation
 /// 後端與模型設定。預設指向家裡 3090 那台（透過 WireGuard VPN 連得到）。
 /// 之後可做成設定畫面讓使用者修改；先用 UserDefaults 覆寫。
 enum AppConfig {
-    static var baseURL: URL {
-        // 預設用 <內網主機A> 的 MoE 伺服器（比 3090 快約 12 倍，也支援看圖）。
-        let s = UserDefaults.standard.string(forKey: "llm.baseURL")
-            ?? "http://<內網主機A>:8990/v1"
-        return URL(string: s)!
-    }
+    /// 一個模型後端：API 位址 + 模型名稱。
+    struct Endpoint { let baseURL: URL; let model: String }
 
-    static var model: String {
-        UserDefaults.standard.string(forKey: "llm.model")
-            ?? "nvidia-Qwen3.6-35B-A3B-NVFP4"
+    /// 要嘗試的後端清單（依序）。
+    /// 若使用者在設定頁填了自訂位址，就只用那一個；
+    /// 否則預設「0.45 MoE（快）優先，連不到退回 3090」。
+    static var endpoints: [Endpoint] {
+        if let custom = UserDefaults.standard.string(forKey: "llm.baseURL"),
+           !custom.isEmpty, let url = URL(string: custom) {
+            let model = UserDefaults.standard.string(forKey: "llm.model") ?? ""
+            return [Endpoint(baseURL: url, model: model)]
+        }
+        return [
+            Endpoint(baseURL: URL(string: "http://<內網主機A>:8990/v1")!,
+                     model: "nvidia-Qwen3.6-35B-A3B-NVFP4"),
+            Endpoint(baseURL: URL(string: "http://<內網主機B>:8990/v1")!,
+                     model: "Qwen3.8-27B-Q4_K_M.gguf")
+        ]
     }
 
     /// 校園行事曆（ICS 格式）。預設為台科大 114 學年度行事曆。

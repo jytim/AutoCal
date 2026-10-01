@@ -98,8 +98,30 @@ struct LLMClient {
     // MARK: - 共用送出邏輯
 
     private func send(messages: [[String: Any]], maxTokens: Int = 800) async throws -> [ParsedItem] {
+        let endpoints = AppConfig.endpoints
+        var lastError: Error = LLMError.badResponse("沒有可用的後端")
+
+        for (index, ep) in endpoints.enumerated() {
+            do {
+                return try await sendOnce(to: ep, messages: messages, maxTokens: maxTokens)
+            } catch let e as URLError {
+                // 連不到這台（逾時、拒絕連線等）→ 試下一台備援
+                lastError = e
+                continue
+            } catch {
+                // 有連到但回應有問題 → 直接回報，不無謂重試
+                _ = index
+                throw error
+            }
+        }
+        throw lastError
+    }
+
+    private func sendOnce(to ep: AppConfig.Endpoint,
+                          messages: [[String: Any]],
+                          maxTokens: Int) async throws -> [ParsedItem] {
         let body: [String: Any] = [
-            "model": AppConfig.model,
+            "model": ep.model,
             "temperature": 0,
             "max_tokens": maxTokens,
             // 關掉 Qwen 的思考模式，回應更快
@@ -107,7 +129,7 @@ struct LLMClient {
             "messages": messages
         ]
 
-        var req = URLRequest(url: AppConfig.baseURL.appendingPathComponent("chat/completions"))
+        var req = URLRequest(url: ep.baseURL.appendingPathComponent("chat/completions"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
