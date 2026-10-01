@@ -32,12 +32,18 @@ struct WebSearchService {
         let results = try await braveSearch(query: query, key: key)
         guard !results.isEmpty else { throw SearchError.noResults }
 
-        // 抓前兩筆結果的頁面內容，補充摘要（摘要常常沒有完整日期）。
-        var pages: [String] = []
-        for r in results.prefix(2) {
-            if let text = try? await fetchPageText(r.url), !text.isEmpty {
-                pages.append("【來源：\(r.url)】\n" + String(text.prefix(3500)))
+        // 同時抓前兩筆結果的頁面內容，補充摘要（摘要常常沒有完整日期）。
+        let topURLs = results.prefix(2).map(\.url)
+        let pages: [String] = await withTaskGroup(of: String?.self) { group in
+            for u in topURLs {
+                group.addTask {
+                    guard let text = try? await Self.fetchPageText(u), !text.isEmpty else { return nil }
+                    return "【來源：\(u)】\n" + String(text.prefix(3500))
+                }
             }
+            var out: [String] = []
+            for await r in group { if let r { out.append(r) } }
+            return out
         }
 
         let snippetBlock = results.prefix(5).map {
@@ -82,10 +88,10 @@ struct WebSearchService {
     }
 
     /// 抓網頁並粗略轉成純文字（去標籤、去 script/style）。
-    private func fetchPageText(_ urlString: String) async throws -> String {
+    private static func fetchPageText(_ urlString: String) async throws -> String {
         guard let url = URL(string: urlString) else { return "" }
         var req = URLRequest(url: url)
-        req.timeoutInterval = 15
+        req.timeoutInterval = 10
         req.setValue("Mozilla/5.0 (iPhone) AutoCal", forHTTPHeaderField: "User-Agent")
         let (data, _) = try await URLSession.shared.data(for: req)
         guard let html = String(data: data, encoding: .utf8) else { return "" }
