@@ -10,6 +10,7 @@ final class InputViewModel: ObservableObject {
 
     private let llm = LLMClient()
     private let writer = EventStoreWriter()
+    private let campus = CampusCalendarService()
 
     func parse() async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -20,6 +21,22 @@ final class InputViewModel: ObservableObject {
         do {
             items = try await llm.parse(text: trimmed)
             if items.isEmpty { errorMessage = "沒有辨識到任何行程或待辦。" }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isParsing = false
+    }
+
+    /// 把輸入當成查詢，去校園行事曆找對應的事件。
+    func searchCampus() async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        isParsing = true
+        errorMessage = nil
+        successMessage = nil
+        do {
+            items = try await campus.search(query: trimmed)
+            if items.isEmpty { errorMessage = "行事曆裡找不到「\(trimmed)」相關的事件。" }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -95,19 +112,29 @@ struct ContentView: View {
             TextField("想安排的行程或待辦…", text: $vm.text, axis: .vertical)
                 .lineLimit(2...5)
                 .textFieldStyle(.roundedBorder)
-            Button {
-                Task { await vm.parse() }
-            } label: {
-                if vm.isParsing {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else {
+            if vm.isParsing {
+                ProgressView().frame(maxWidth: .infinity).controlSize(.large)
+            } else {
+                Button {
+                    Task { await vm.parse() }
+                } label: {
                     Label("解析", systemImage: "wand.and.stars")
                         .frame(maxWidth: .infinity)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(vm.text.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Button {
+                    Task { await vm.searchCampus() }
+                } label: {
+                    Label("查校園行事曆", systemImage: "graduationcap")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(vm.text.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .disabled(vm.isParsing || vm.text.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 }
