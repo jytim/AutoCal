@@ -32,6 +32,7 @@ targets:
         NSRemindersFullAccessUsageDescription: "AutoCal 需要提醒事項權限，才能把辨識出的待辦加入你的提醒事項。"
         NSMicrophoneUsageDescription: "AutoCal 需要麥克風權限，才能用語音輸入行程。"
         NSSpeechRecognitionUsageDescription: "AutoCal 使用語音辨識，把你說的話轉成文字。"
+        NSPhotoLibraryAddUsageDescription: "AutoCal 需要相簿權限，才能把鎖定畫面桌布圖存到你的相簿。"
         # 允許連家裡區網的 HTTP 模型伺服器（僅本機/區網位址）
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
