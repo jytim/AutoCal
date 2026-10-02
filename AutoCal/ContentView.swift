@@ -86,6 +86,7 @@ final class InputViewModel: ObservableObject {
 struct ContentView: View {
     @StateObject private var vm = InputViewModel()
     @State private var showSettings = false
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -138,10 +139,19 @@ struct ContentView: View {
                 .padding()
             }
             .navigationTitle("AutoCal")
+            // 點空白處或往下滑都收起鍵盤
+            .onTapGesture { inputFocused = false }
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: {
                         Image(systemName: "gearshape")
+                    }
+                }
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("完成") { inputFocused = false }
                     }
                 }
             }
@@ -157,6 +167,7 @@ struct ContentView: View {
             TextField("想安排的行程或待辦…", text: $vm.text, axis: .vertical)
                 .lineLimit(2...5)
                 .textFieldStyle(.roundedBorder)
+                .focused($inputFocused)
             if vm.isParsing {
                 ProgressView().frame(maxWidth: .infinity).controlSize(.large)
             } else {
