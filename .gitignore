@@ -13,6 +13,8 @@ xcuserdata/
 AutoCal.xcodeproj/
 AutoCal/Info.plist
 AutoCalShare/Info.plist
+AutoCal/AutoCal.entitlements
+AutoCalShare/AutoCalShare.entitlements
 
 # Swift Package Manager
 .build/

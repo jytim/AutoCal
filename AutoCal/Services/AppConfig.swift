@@ -3,6 +3,9 @@ import Foundation
 /// 後端與模型設定。預設指向家裡 3090 那台（透過 WireGuard VPN 連得到）。
 /// 之後可做成設定畫面讓使用者修改；先用 UserDefaults 覆寫。
 enum AppConfig {
+    /// App 與分享擴充功能（以及之後的小工具）共用資料的 App Group。
+    static let appGroup = "group.com.jiangyanting.autocal"
+
     /// 一個模型後端：API 位址 + 模型名稱。
     struct Endpoint { let baseURL: URL; let model: String }
 

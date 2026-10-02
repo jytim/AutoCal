@@ -38,6 +38,10 @@ final class ConflictChecker {
             var conflicts = existingEvents(from: start, to: end).map {
                 ParsedItem.ConflictInfo(title: $0.title ?? "（無標題）", start: $0.startDate, end: $0.endDate)
             }
+            // 課堂不在 Apple 行事曆裡，要另外把撞到的課算進衝突
+            conflicts += courseOccurrences(from: start, to: end).map {
+                ParsedItem.ConflictInfo(title: "課堂：\($0.course.name)", start: $0.start, end: $0.end)
+            }
             // 同一批新行程裡，排在前面、且仍會加入的那些
             for j in result.indices where j < i && result[j].isSelected && result[j].resolution != .skip {
                 guard Self.isTimedEvent(result[j]), let other = Self.interval(of: result[j]),
@@ -142,6 +146,21 @@ final class ConflictChecker {
         }
     }
 
+    /// 和區間重疊的課堂（課堂存在 AutoCal 自己的課表，不在行事曆裡）。
+    private func courseOccurrences(from start: Date, to end: Date) -> [CourseOccurrence] {
+        let store = CourseStore.shared
+        store.reload()   // 分享擴充功能是另一個行程，確保讀到最新的課表
+        let cal = Calendar.current
+        var out: [CourseOccurrence] = []
+        var day = cal.startOfDay(for: start)
+        while day < end {
+            out += store.occurrences(on: day).filter { $0.start < end && start < $0.end }
+            guard let next = cal.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return out
+    }
+
     /// 從原時間往後、每 15 分鐘找一次，回傳當天 23:00 前第一個放得下的空檔。
     private func freeSlot(for index: Int, in items: [ParsedItem],
                           start: Date, duration: TimeInterval) -> Date? {
@@ -150,6 +169,7 @@ final class ConflictChecker {
 
         var busy = existingEvents(from: cal.startOfDay(for: start), to: dayEnd)
             .map { ($0.startDate!, $0.endDate!) }
+        busy += courseOccurrences(from: cal.startOfDay(for: start), to: dayEnd).map { ($0.start, $0.end) }
         for (j, other) in items.enumerated()
         where j != index && other.isSelected && other.resolution != .skip && Self.isTimedEvent(other) {
             if let iv = Self.interval(of: other) { busy.append(iv) }

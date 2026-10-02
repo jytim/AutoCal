@@ -2,7 +2,7 @@ import Foundation
 import EventKit
 import SwiftUI
 
-/// 課表上的一個時間塊（來自 Apple 行事曆的一筆行程）。
+/// 課表上的一個時間塊：Apple 行事曆的一筆行程，或 AutoCal 課表裡的一堂課。
 struct TimetableEvent: Identifiable, Equatable {
     let id: String
     let title: String
@@ -11,6 +11,9 @@ struct TimetableEvent: Identifiable, Equatable {
     let location: String?
     let notes: String?
     let color: Color
+    /// 不是 nil 代表這是一堂課（不在 Apple 行事曆裡）。
+    var courseID: UUID? = nil
+    var isCourse: Bool { courseID != nil }
 }
 
 /// 一天裡某段沒有任何行程的空檔。
@@ -64,26 +67,40 @@ final class TimetableViewModel: ObservableObject {
     }
 
     func load() async {
-        guard (try? await store.requestFullAccessToEvents()) == true else {
-            accessDenied = true
-            return
-        }
-        accessDenied = false
-        guard let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) else { return }
-        let pred = store.predicateForEvents(withStart: weekStart, end: weekEnd, calendars: nil)
-        events = store.events(matching: pred)
-            .filter { !$0.isAllDay }
-            .map { e in
-                TimetableEvent(
-                    id: (e.eventIdentifier ?? UUID().uuidString) + "\(e.startDate.timeIntervalSince1970)",
-                    title: e.title ?? "（無標題）",
-                    start: e.startDate,
-                    end: e.endDate,
-                    location: e.location,
-                    notes: e.notes,
-                    color: SubjectColor.color(for: e.title ?? ""))
+        var fromCalendar: [TimetableEvent] = []
+        if (try? await store.requestFullAccessToEvents()) == true {
+            accessDenied = false
+            if let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) {
+                let pred = store.predicateForEvents(withStart: weekStart, end: weekEnd, calendars: nil)
+                fromCalendar = store.events(matching: pred)
+                    .filter { !$0.isAllDay }
+                    .map { e in
+                        TimetableEvent(
+                            id: (e.eventIdentifier ?? UUID().uuidString) + "\(e.startDate.timeIntervalSince1970)",
+                            title: e.title ?? "（無標題）",
+                            start: e.startDate,
+                            end: e.endDate,
+                            location: e.location,
+                            notes: e.notes,
+                            color: SubjectColor.color(for: e.title ?? ""))
+                    }
             }
-            .sorted { $0.start < $1.start }
+        } else {
+            accessDenied = true   // 沒有行事曆權限時，課堂仍然照常顯示
+        }
+
+        // 課堂來自 AutoCal 自己的課表，不在 Apple 行事曆裡
+        let fromCourses = days.flatMap { CourseStore.shared.occurrences(on: $0) }.map { o in
+            TimetableEvent(id: "course-" + o.id,
+                           title: o.course.name,
+                           start: o.start,
+                           end: o.end,
+                           location: o.course.location,
+                           notes: nil,
+                           color: SubjectColor.color(for: o.course.name),
+                           courseID: o.course.id)
+        }
+        events = (fromCalendar + fromCourses).sorted { $0.start < $1.start }
     }
 
     // MARK: - 排版
