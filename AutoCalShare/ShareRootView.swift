@@ -13,6 +13,7 @@ struct ShareRootView: View {
 
     private let llm = LLMClient()
     private let writer = EventStoreWriter()
+    private let checker = ConflictChecker()
 
     var body: some View {
         NavigationStack {
@@ -90,7 +91,7 @@ struct ShareRootView: View {
             if result.isEmpty {
                 message = "沒有找到行程或待辦"; phase = .failed
             } else {
-                items = result; phase = .review
+                items = await checker.annotate(result); phase = .review
             }
         } catch {
             message = error.localizedDescription; phase = .failed
@@ -99,7 +100,7 @@ struct ShareRootView: View {
 
     private func save() async {
         do {
-            let r = try await writer.write(items)
+            let r = try await writer.write(ConflictChecker.applyResolutions(items))
             var parts: [String] = []
             if r.events > 0 { parts.append("\(r.events) 個行程") }
             if r.reminders > 0 { parts.append("\(r.reminders) 個待辦") }

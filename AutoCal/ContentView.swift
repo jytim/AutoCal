@@ -12,48 +12,46 @@ final class InputViewModel: ObservableObject {
     private let writer = EventStoreWriter()
     private let campus = CampusCalendarService()
     private let web = WebSearchService()
+    private let checker = ConflictChecker()
 
     func parse() async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        isParsing = true
-        errorMessage = nil
-        successMessage = nil
-        do {
-            items = try await llm.parse(text: trimmed)
-            if items.isEmpty { errorMessage = "沒有辨識到任何行程或待辦。" }
-        } catch {
-            errorMessage = error.localizedDescription
+        await run(emptyMessage: { _ in "沒有辨識到任何行程或待辦。" }) { [llm] q in
+            try await llm.parse(text: q)
         }
-        isParsing = false
     }
 
     /// 把輸入當成查詢，去校園行事曆找對應的事件。
     func searchCampus() async {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        isParsing = true
-        errorMessage = nil
-        successMessage = nil
-        do {
-            items = try await campus.search(query: trimmed)
-            if items.isEmpty { errorMessage = "行事曆裡找不到「\(trimmed)」相關的事件。" }
-        } catch {
-            errorMessage = error.localizedDescription
+        await run(emptyMessage: { "行事曆裡找不到「\($0)」相關的事件。" }) { [campus] q in
+            try await campus.search(query: q)
         }
-        isParsing = false
     }
 
     /// 把輸入當成查詢，上網搜尋活動。
     func searchWeb() async {
+        await run(emptyMessage: { "網路上找不到「\($0)」的明確活動資訊。" }) { [web] q in
+            try await web.search(query: q)
+        }
+    }
+
+    /// 使用者改過時間後，重新檢查衝突。
+    func recheckConflicts() async {
+        isParsing = true
+        items = await checker.annotate(items)
+        isParsing = false
+    }
+
+    /// 三種輸入共用：取得項目 → 檢查衝突 → 顯示確認卡片。
+    private func run(emptyMessage: (String) -> String,
+                     fetch: (String) async throws -> [ParsedItem]) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         isParsing = true
         errorMessage = nil
         successMessage = nil
         do {
-            items = try await web.search(query: trimmed)
-            if items.isEmpty { errorMessage = "網路上找不到「\(trimmed)」的明確活動資訊。" }
+            items = await checker.annotate(try await fetch(trimmed))
+            if items.isEmpty { errorMessage = emptyMessage(trimmed) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -63,7 +61,7 @@ final class InputViewModel: ObservableObject {
     func save() async {
         errorMessage = nil
         do {
-            let r = try await writer.write(items)
+            let r = try await writer.write(ConflictChecker.applyResolutions(items))
             var parts: [String] = []
             if r.events > 0 { parts.append("\(r.events) 個行程") }
             if r.reminders > 0 { parts.append("\(r.reminders) 個待辦") }
@@ -101,8 +99,18 @@ struct ContentView: View {
                     }
 
                     if !vm.items.isEmpty {
-                        Text("確認要加入的項目")
-                            .font(.headline)
+                        HStack {
+                            Text("確認要加入的項目")
+                                .font(.headline)
+                            Spacer()
+                            Button {
+                                Task { await vm.recheckConflicts() }
+                            } label: {
+                                Label("重新檢查衝突", systemImage: "arrow.triangle.2.circlepath")
+                                    .font(.footnote)
+                            }
+                            .disabled(vm.isParsing)
+                        }
                         ForEach($vm.items) { $item in
                             ItemCard(item: $item)
                         }
