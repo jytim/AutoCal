@@ -60,10 +60,49 @@ struct ItemCard: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+
+            if !item.conflicts.isEmpty {
+                conflictSection
+            }
         }
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .opacity(item.isSelected ? 1 : 0.5)
+        .opacity(item.isSelected && item.resolution != .skip ? 1 : 0.5)
+    }
+
+    private static let hm: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private var conflictSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("時間衝突", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.bold())
+                .foregroundStyle(.orange)
+            ForEach(item.conflicts) { c in
+                Text("・\(c.title)  \(Self.hm.string(from: c.start))–\(Self.hm.string(from: c.end))")
+                    .font(.caption)
+            }
+            if let note = item.aiNote, !note.isEmpty {
+                Text("AI：\(note)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Picker("處理方式", selection: $item.resolution) {
+                Text("一起排").tag(ParsedItem.Resolution.overlap)
+                if let s = item.suggestedStart {
+                    Text("改到 \(Self.hm.string(from: s))").tag(ParsedItem.Resolution.move)
+                }
+                Text("不加入").tag(ParsedItem.Resolution.skip)
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(10)
+        .background(Color.orange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }

@@ -98,28 +98,71 @@ struct LLMClient {
     // MARK: - 共用送出邏輯
 
     private func send(messages: [[String: Any]], maxTokens: Int = 800) async throws -> [ParsedItem] {
-        let endpoints = AppConfig.endpoints
-        var lastError: Error = LLMError.badResponse("沒有可用的後端")
+        let content = try await sendRaw(messages: messages, maxTokens: maxTokens)
+        return try Self.decodeItems(from: content)
+    }
 
-        for (index, ep) in endpoints.enumerated() {
+    /// 送出並回傳模型的原始文字；依序嘗試後端，連不到就換下一台。
+    private func sendRaw(messages: [[String: Any]], maxTokens: Int) async throws -> String {
+        var lastError: Error = LLMError.badResponse("沒有可用的後端")
+        for ep in AppConfig.endpoints {
             do {
                 return try await sendOnce(to: ep, messages: messages, maxTokens: maxTokens)
             } catch let e as URLError {
                 // 連不到這台（逾時、拒絕連線等）→ 試下一台備援
                 lastError = e
-                continue
-            } catch {
-                // 有連到但回應有問題 → 直接回報，不無謂重試
-                _ = index
-                throw error
             }
+            // 其他錯誤（有連到但回應有問題）直接往外拋，不無謂重試
         }
         throw lastError
     }
 
+    // MARK: - 衝突判斷
+
+    struct ConcurrencyVerdict {
+        let canOverlap: Bool
+        let reason: String
+    }
+
+    /// 判斷新行程能不能和衝突的既有行程同時進行。
+    func judgeConcurrency(item: ParsedItem,
+                          conflicts: [ParsedItem.ConflictInfo]) async throws -> ConcurrencyVerdict {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "zh_TW")
+        df.dateFormat = "M/d HH:mm"
+        func range(_ s: Date?, _ e: Date?) -> String {
+            guard let s else { return "時間未定" }
+            return df.string(from: s) + (e.map { "–" + df.string(from: $0) } ?? "")
+        }
+
+        let system = """
+        你是行程安排助理。判斷「新行程」能不能和「衝突的既有行程」同時進行。
+        可以同時做的例子：通勤時聽 podcast、吃飯時線上聽講。
+        不能同時做的例子：兩個需要人在不同地點的行程、兩件都需要專注的事（上課、開會、考試、看醫生）。
+        只輸出一個 JSON 物件，不要任何其他文字：{"canOverlap": true 或 false, "reason": "一句繁體中文理由"}
+        """
+        var user = "新行程：\(item.title)（\(range(item.start, item.end))"
+        if let loc = item.location { user += "，地點：\(loc)" }
+        user += "）\n衝突的既有行程：\n"
+        user += conflicts.map { "- \($0.title)（\(range($0.start, $0.end))）" }.joined(separator: "\n")
+
+        let text = try await sendRaw(messages: [
+            ["role": "system", "content": system],
+            ["role": "user", "content": user]
+        ], maxTokens: 200)
+
+        guard let a = text.firstIndex(of: "{"), let b = text.lastIndex(of: "}"),
+              let data = String(text[a...b]).data(using: .utf8),
+              let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let can = obj["canOverlap"] as? Bool else {
+            throw LLMError.decodeFailed(text)
+        }
+        return ConcurrencyVerdict(canOverlap: can, reason: obj["reason"] as? String ?? "")
+    }
+
     private func sendOnce(to ep: AppConfig.Endpoint,
                           messages: [[String: Any]],
-                          maxTokens: Int) async throws -> [ParsedItem] {
+                          maxTokens: Int) async throws -> String {
         let body: [String: Any] = [
             "model": ep.model,
             "temperature": 0,
@@ -144,7 +187,7 @@ struct LLMClient {
         guard let content = completion.choices.first?.message.content, !content.isEmpty else {
             throw LLMError.noContent
         }
-        return try Self.decodeItems(from: content)
+        return content
     }
 
     // MARK: - Prompt

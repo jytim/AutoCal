@@ -17,7 +17,32 @@ struct ParsedItem: Identifiable, Codable, Equatable {
     /// 使用者是否選取要加入（確認卡片上可勾選）。
     var isSelected: Bool = true
 
-    // LLM 回傳的 JSON 只有這些欄位；id/isSelected 由 app 自己補。
+    // MARK: 衝突偵測（由 ConflictChecker 填入，不來自 LLM 的 JSON）
+
+    /// 和這筆時間重疊的既有行程。
+    struct ConflictInfo: Identifiable, Equatable {
+        let id = UUID()
+        let title: String
+        let start: Date
+        let end: Date
+    }
+
+    /// 有衝突時，使用者選擇的處理方式。
+    enum Resolution: String {
+        case none      // 沒有衝突
+        case overlap   // 照原時間排，和既有行程並行
+        case move      // 改到建議的空檔
+        case skip      // 不加入
+    }
+
+    var conflicts: [ConflictInfo] = []
+    /// 當天找到的最近空檔（同樣長度）。
+    var suggestedStart: Date?
+    var resolution: Resolution = .none
+    /// AI 對「能不能同時做」的判斷理由。
+    var aiNote: String?
+
+    // LLM 回傳的 JSON 只有這些欄位；其餘欄位由 app 自己補。
     enum CodingKeys: String, CodingKey {
         case type, title, start, end, location, allDay
     }
