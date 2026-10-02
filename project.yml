@@ -33,6 +33,9 @@ targets:
         NSMicrophoneUsageDescription: "AutoCal 需要麥克風權限，才能用語音輸入行程。"
         NSSpeechRecognitionUsageDescription: "AutoCal 使用語音辨識，把你說的話轉成文字。"
         NSPhotoLibraryAddUsageDescription: "AutoCal 需要相簿權限，才能把鎖定畫面桌布圖存到你的相簿。"
+        NSLocalNetworkUsageDescription: "AutoCal 需要連到你家區網裡的模型伺服器，才能辨識行程。"
+        # 只用標準 HTTPS，屬於免申報的加密；寫明可省去每次上傳後被問出口合規
+        ITSAppUsesNonExemptEncryption: false
         # 允許連家裡區網的 HTTP 模型伺服器（僅本機/區網位址）
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -62,6 +65,8 @@ targets:
       path: AutoCalShare/Info.plist
       properties:
         CFBundleDisplayName: AutoCal
+        NSLocalNetworkUsageDescription: "AutoCal 需要連到你家區網裡的模型伺服器，才能辨識行程。"
+        ITSAppUsesNonExemptEncryption: false
         NSCalendarsFullAccessUsageDescription: "AutoCal 需要行事曆權限，才能把辨識出的行程加入你的行事曆。"
         NSRemindersFullAccessUsageDescription: "AutoCal 需要提醒事項權限，才能把辨識出的待辦加入你的提醒事項。"
         NSAppTransportSecurity:
