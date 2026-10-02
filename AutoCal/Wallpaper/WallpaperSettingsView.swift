@@ -5,18 +5,11 @@ import EventKit
 /// 鎖定畫面桌布：預覽、存到相簿，以及自動更新的設定教學。
 struct WallpaperSettingsView: View {
     @State private var image: UIImage?
-    @State private var showTomorrow = false
     @State private var status: String?
 
     var body: some View {
         List {
             Section {
-                Picker("預覽", selection: $showTomorrow) {
-                    Text("今天").tag(false)
-                    Text("明天").tag(true)
-                }
-                .pickerStyle(.segmented)
-
                 if let image {
                     Image(uiImage: image)
                         .resizable()
@@ -53,9 +46,9 @@ struct WallpaperSettingsView: View {
                     Text(status).font(.footnote).foregroundStyle(.secondary)
                 }
             } header: {
-                Text("桌布預覽")
+                Text("目前的桌布")
             } footer: {
-                Text("這是靜態圖片，不會即時跳動，右上角寫著它是幾點更新的。上方約三分之一留給系統時鐘，下方留給手電筒與相機按鈕。")
+                Text("這就是捷徑會拿去當桌布的那張（永遠是今天剩下的）。它是靜態圖片，不會即時跳動，右上角寫著幾點更新的。上方約三分之一留給系統時鐘，下方留給手電筒與相機按鈕。")
             }
 
             Section {
@@ -82,7 +75,6 @@ struct WallpaperSettingsView: View {
         .navigationTitle("鎖定畫面桌布")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refresh() }
-        .onChange(of: showTomorrow) { _, _ in Task { await refresh() } }
     }
 
     private func step(_ n: Int, _ text: String) -> some View {
@@ -108,10 +100,7 @@ struct WallpaperSettingsView: View {
     private func refresh() async {
         // 在 App 裡開這一頁時才會跳行事曆權限；捷徑背景執行時不會跳，所以要先在這裡授權過
         _ = try? await EKEventStore().requestFullAccessToEvents()
-        let cal = Calendar.current
-        let day = showTomorrow ? (cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: Date())) ?? Date()) : Date()
-        let now = showTomorrow ? cal.startOfDay(for: day) : Date()
-        image = WallpaperRenderer.image(for: day, now: now)
+        image = WallpaperRenderer.image()
     }
 
     private func saveToPhotos() async {
