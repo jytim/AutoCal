@@ -47,9 +47,15 @@ struct CourseDraft: Identifiable, Decodable {
     var end: String?
     var location: String?
     var isSelected = true
+    /// 這張截圖看得到星期標題嗎。看不到的話，星期是靠推測的，要請使用者確認。
+    var hasHeader = true
+    /// 星期是推測的（來自沒有標題的截圖），確認畫面會標出來。
+    var weekdayGuessed = false
+    /// 合併時留下的提醒（例如合併後時段變長，可能其實是不同天的兩堂課）。
+    var mergeNote: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, weekday, startPeriod, endPeriod, start, end, location
+        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader
     }
 
     init(from decoder: Decoder) throws {
@@ -61,6 +67,7 @@ struct CourseDraft: Identifiable, Decodable {
         start = Self.flexString(c, .start)
         end = Self.flexString(c, .end)
         location = Self.flexString(c, .location)
+        hasHeader = (try? c.decodeIfPresent(Bool.self, forKey: .hasHeader)) ?? true
     }
 
     /// 模型有時把節次回成數字、有時回成字串，兩種都收。
@@ -109,6 +116,49 @@ struct CourseDraft: Identifiable, Decodable {
         "8": (930, 980),   "9": (990, 1040),  "10": (1050, 1100),
         "A": (1105, 1155), "B": (1160, 1210), "C": (1215, 1265), "D": (1270, 1320)
     ]
+}
+
+extension CourseDraft {
+    /// 合併多張截圖辨識出的課：同一門課、同一天，時段重疊或緊接（相隔 20 分鐘內，
+    /// 例如連續兩節）就當成同一堂，取聯集；這樣重複拍到的、或被截圖邊界切成兩半的課都會接起來。
+    static func merged(_ drafts: [CourseDraft]) -> [CourseDraft] {
+        var out: [CourseDraft] = []
+        for var d in drafts {
+            guard let ds = d.startMinute, let de = d.endMinute else { continue }
+            let name = d.name.trimmingCharacters(in: .whitespaces)
+            // 星期不明（0）的：如果整份課表裡這門課只在同一天出現，就沿用那一天
+            if d.weekday == 0 {
+                let days = Set(drafts.filter { $0.weekday != 0
+                    && $0.name.trimmingCharacters(in: .whitespaces) == name }.map(\.weekday))
+                if days.count == 1, let only = days.first { d.weekday = only }
+            }
+            if let i = out.firstIndex(where: { o in
+                guard let os = o.startMinute, let oe = o.endMinute else { return false }
+                return o.name.trimmingCharacters(in: .whitespaces) == name
+                    && o.weekday == d.weekday
+                    && ds <= oe + 20 && os <= de + 20
+            }) {
+                var m = out[i]
+                let ms = m.startMinute ?? ds, me = m.endMinute ?? de
+                let grew = ds < ms || de > me
+                if ds < ms { m.startPeriod = d.startPeriod; m.start = d.start }
+                if de > me { m.endPeriod = d.endPeriod; m.end = d.end }
+                if m.location == nil { m.location = d.location }
+                // 只要有一邊的星期是推測的，合併後就仍然是推測的——
+                // 不能讓「可信」的那一邊把「猜的」洗白，否則不同天的兩堂課會被無聲併成一堂。
+                if m.weekdayGuessed || d.weekdayGuessed {
+                    m.weekdayGuessed = true
+                    if grew {
+                        m.mergeNote = "和一張沒有星期標題的截圖合併後，時段變長了。如果其實是不同天的兩堂課，請取消勾選這筆，再用「+」手動新增。"
+                    }
+                }
+                out[i] = m
+            } else {
+                out.append(d)
+            }
+        }
+        return out
+    }
 }
 
 /// 課表的儲存。優先放在 App Group（讓分享擴充功能、之後的小工具也讀得到），
