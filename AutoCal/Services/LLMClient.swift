@@ -120,12 +120,14 @@ struct LLMClient {
     // MARK: - 課表截圖
 
     /// 看一張課表截圖，抽出每一門課（一門課一週上多次要分成多筆）。
-    func parseCourses(imageData: Data, mimeType: String = "image/jpeg") async throws -> [CourseDraft] {
+    func parseCourses(imageData: Data, mimeType: String = "image/jpeg",
+                      known: [CourseDraft] = []) async throws -> [CourseDraft] {
         let system = """
         你是課表辨識助理。使用者會給你一張課表截圖，請找出每一門課，輸出 JSON 陣列。
         每個元素的欄位：
         - name: 課程名稱（字串，去掉課號與老師名）
         - weekday: 星期，1=週一、2=週二、…、7=週日。請看課程方塊在「哪一欄」，對齊上方哪個星期標題
+        - hasHeader: 布林。這張截圖裡你「真的看得到星期標題列」（週一、週二…）就填 true，看不到填 false
         - startPeriod: 這門課占用的第一個節次（字串，例如 "3" 或 "A"）
         - endPeriod: 這門課占用的最後一個節次（字串）
         - start / end: 只有當截圖上直接印了上課時間（"HH:mm"）才填；沒有就用 null
@@ -135,6 +137,10 @@ struct LLMClient {
         - 節次請仔細對照課程方塊的「上緣」和「下緣」各自對齊左邊哪一個節次數字。不要自己把節次換成時間。
         - 同一門課一週上好幾次（不同星期或不同時段），要拆成好幾筆。
         - 連續的節次合併成一筆（例如第 6、7 節 → startPeriod "6"，endPeriod "7"）。
+        - 截圖可能只是整張課表的一部分（上下或左右被切掉）。課程方塊被切到邊緣時，只輸出你真的看得到的節次範圍，不要猜被切掉的部分。
+        - 如果這張截圖看不到星期標題：
+          · 若下面「已知的課」裡有同一門課，直接沿用它的星期（一門課在另一天也有的話，用方塊左右位置判斷是哪一欄）。
+          · 否則不要亂猜，weekday 填 0（表示星期不明，由使用者自己選）。
         - 只根據截圖上真的看得到的課，不要編造。看不清楚的課就略過。
         只輸出 JSON 陣列本身，不要任何其他文字。
         """
@@ -143,8 +149,14 @@ struct LLMClient {
             ["type": "text", "text": "這是我的課表截圖，請把每一門課抽出來。"],
             ["type": "image_url", "image_url": ["url": dataURI]]
         ]
+        var knownNote = ""
+        if !known.isEmpty {
+            knownNote = "\n\n已知的課（來自同一份課表的其他截圖，可當作線索）：\n" + known.map {
+                "- \($0.name)：週\(Course.weekdayNames[max(0, min(6, $0.weekday - 1))])"
+            }.joined(separator: "\n")
+        }
         let text = try await sendRaw(messages: [
-            ["role": "system", "content": system],
+            ["role": "system", "content": system + knownNote],
             ["role": "user", "content": userContent]
         ], maxTokens: 2000)
 
@@ -153,8 +165,15 @@ struct LLMClient {
             throw LLMError.decodeFailed(text)
         }
         do {
+            // weekday = 0 代表星期不明，保留下來讓使用者在確認畫面自己選
             return try JSONDecoder().decode([CourseDraft].self, from: data)
-                .filter { $0.startMinute != nil && $0.endMinute != nil && (1...7).contains($0.weekday) }
+                .filter { $0.startMinute != nil && $0.endMinute != nil && (0...7).contains($0.weekday) }
+                .map { d in
+                    // 看不到星期標題的截圖：星期是推測的，標記起來讓使用者確認
+                    var d = d
+                    if !d.hasHeader { d.weekdayGuessed = true }
+                    return d
+                }
         } catch {
             throw LLMError.decodeFailed("\(error)\n原文：\(text)")
         }

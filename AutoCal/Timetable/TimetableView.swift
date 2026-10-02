@@ -10,12 +10,19 @@ struct TimetableView: View {
     @State private var formTarget: FormTarget?
     @State private var importBox: ImportBox?
     @State private var showPhotoPicker = false
-    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var pickedPhotos: [PhotosPickerItem] = []
+    @State private var importProgress = "正在辨識課表…"
     @State private var importing = false
     @State private var importError: String?
 
     private struct FormTarget: Identifiable { let id = UUID(); let course: Course? }
-    private struct ImportBox: Identifiable { let id = UUID(); let drafts: [CourseDraft] }
+    private struct ImportBox: Identifiable {
+        let id = UUID()
+        let drafts: [CourseDraft]
+        var sourceCount = 1
+        var rawCount = 0
+        var failures: [String] = []
+    }
 
     private let hourHeight: CGFloat = 46
     private let timeColWidth: CGFloat = 34
@@ -76,19 +83,20 @@ struct TimetableView: View {
                             Label("手動新增課堂", systemImage: "plus")
                         }
                         Button { showPhotoPicker = true } label: {
-                            Label("從截圖匯入課表", systemImage: "photo")
+                            Label("從截圖匯入課表（可多張）", systemImage: "photo.on.rectangle")
                         }
                     } label: { Image(systemName: "plus") }
                 }
             }
-            .photosPicker(isPresented: $showPhotoPicker, selection: $pickedPhoto, matching: .images)
-            .onChange(of: pickedPhoto) { _, item in
-                guard let item else { return }
-                Task { await importFromPhoto(item) }
+            .photosPicker(isPresented: $showPhotoPicker, selection: $pickedPhotos,
+                          maxSelectionCount: 8, matching: .images)
+            .onChange(of: pickedPhotos) { _, items in
+                guard !items.isEmpty else { return }
+                Task { await importFromPhotos(items) }
             }
             .overlay {
                 if importing {
-                    ProgressView("正在辨識課表…")
+                    ProgressView(importProgress)
                         .padding(24)
                         .background(.regularMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -122,30 +130,51 @@ struct TimetableView: View {
                     .presentationDetents([.medium, .large])
             }
             .sheet(item: $formTarget) { target in CourseFormView(editing: target.course) }
-            .sheet(item: $importBox) { box in CourseImportView(drafts: box.drafts) }
+            .sheet(item: $importBox) { box in
+                CourseImportView(drafts: box.drafts, sourceCount: box.sourceCount,
+                                 rawCount: box.rawCount, failures: box.failures)
+            }
         }
     }
 
     // MARK: - 課表截圖匯入
 
-    private func importFromPhoto(_ item: PhotosPickerItem) async {
+    /// 一張課表放不下時可以多選幾張截圖：逐張辨識，再合併重複與被截斷的課。
+    private func importFromPhotos(_ items: [PhotosPickerItem]) async {
         importing = true
-        defer { importing = false; pickedPhoto = nil }
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self) else {
-                importError = "讀不到這張圖片"; return
+        defer { importing = false; pickedPhotos = [] }
+
+        var all: [CourseDraft] = []
+        var failures: [String] = []
+        for (i, item) in items.enumerated() {
+            importProgress = items.count > 1 ? "正在辨識第 \(i + 1) / \(items.count) 張…" : "正在辨識課表…"
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else {
+                    failures.append("第 \(i + 1) 張：讀不到圖片"); continue
+                }
+                all += try await LLMClient().parseCourses(imageData: Self.downscaled(data),
+                                                            known: all.filter { $0.weekday != 0 })
+            } catch {
+                failures.append("第 \(i + 1) 張：\(error.localizedDescription)")
             }
-            let drafts = try await LLMClient().parseCourses(imageData: Self.downscaled(data))
-            if drafts.isEmpty { importError = "截圖裡沒有辨識到課堂" } else { importBox = ImportBox(drafts: drafts) }
-        } catch {
-            importError = error.localizedDescription
+        }
+
+        let merged = CourseDraft.merged(all)
+        if merged.isEmpty {
+            importError = failures.isEmpty ? "截圖裡沒有辨識到課堂" : failures.joined(separator: "\n")
+        } else {
+            importBox = ImportBox(drafts: merged, sourceCount: items.count,
+                                  rawCount: all.count, failures: failures)
         }
     }
 
-    /// 長邊超過 1600px 就縮小並轉成 JPEG，加快上傳與辨識。
-    private static func downscaled(_ data: Data, maxSide: CGFloat = 1600) -> Data {
+    /// 縮小並轉成 JPEG 加快上傳。一般截圖長邊 1600px；很長的長截圖（高是寬的兩倍以上）
+    /// 保留到 3000px，不然縮太小字會看不清楚。
+    private static func downscaled(_ data: Data) -> Data {
         guard let img = UIImage(data: data) else { return data }
         let long = max(img.size.width, img.size.height)
+        let short = max(1, min(img.size.width, img.size.height))
+        let maxSide: CGFloat = (long / short) > 2 ? 3000 : 1600
         let scale = min(1, maxSide / long)
         let size = CGSize(width: img.size.width * scale, height: img.size.height * scale)
         let out = UIGraphicsImageRenderer(size: size).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }

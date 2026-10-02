@@ -7,7 +7,14 @@ struct CourseImportView: View {
     @State private var termStart: Date
     @State private var termEnd: Date
 
-    init(drafts: [CourseDraft]) {
+    let sourceCount: Int
+    let rawCount: Int
+    let failures: [String]
+
+    init(drafts: [CourseDraft], sourceCount: Int = 1, rawCount: Int = 0, failures: [String] = []) {
+        self.sourceCount = sourceCount
+        self.rawCount = rawCount
+        self.failures = failures
         _drafts = State(initialValue: drafts)
         let cal = Calendar.current
         let weekStart = cal.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
@@ -16,10 +23,25 @@ struct CourseImportView: View {
     }
 
     private var selectedCount: Int { drafts.filter(\.isSelected).count }
+    private var hasUnknownWeekday: Bool { drafts.contains { $0.isSelected && ($0.weekday == 0 || $0.weekdayGuessed) } }
+
+    private var headerText: String {
+        var t = "辨識到 \(drafts.count) 堂課，請確認時間"
+        if sourceCount > 1 {
+            t = "從 \(sourceCount) 張截圖辨識到 \(drafts.count) 堂課"
+            if rawCount > drafts.count { t += "（已合併 \(rawCount - drafts.count) 筆重複或被截斷的）" }
+        }
+        return t
+    }
 
     var body: some View {
         NavigationStack {
             List {
+                if !failures.isEmpty {
+                    Section("有幾張沒辨識成功") {
+                        ForEach(failures, id: \.self) { Text($0).font(.footnote).foregroundStyle(.red) }
+                    }
+                }
                 Section {
                     DatePicker("學期第一天", selection: $termStart, displayedComponents: .date)
                     DatePicker("學期最後一天", selection: $termEnd, displayedComponents: .date)
@@ -33,20 +55,46 @@ struct CourseImportView: View {
                     ForEach($drafts) { $d in
                         HStack(alignment: .top) {
                             Toggle("", isOn: $d.isSelected).labelsHidden()
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text(d.name).font(.headline)
-                                Text("週\(Course.weekdayNames[max(0, min(6, d.weekday - 1))]) "
-                                     + (d.periodText.map { "\($0) " } ?? "")
+                                Text((d.periodText.map { "\($0) " } ?? "")
                                      + d.timeText
                                      + (d.location.map { " · \($0)" } ?? ""))
                                     .font(.footnote).foregroundStyle(.secondary)
+                                HStack(spacing: 6) {
+                                    Text("星期").font(.footnote)
+                                    Picker("星期", selection: $d.weekday) {
+                                        if d.weekday == 0 { Text("請選擇").tag(0) }
+                                        ForEach(1...7, id: \.self) {
+                                            Text("週" + Course.weekdayNames[$0 - 1]).tag($0)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+                                    .tint(d.weekday == 0 ? .red : .accentColor)
+                                    if d.weekday == 0 {
+                                        Text("星期不明，請選").font(.caption).foregroundStyle(.red)
+                                    } else if d.weekdayGuessed {
+                                        Button {
+                                            d.weekdayGuessed = false      // 使用者確認過了
+                                        } label: {
+                                            Label("沒標題，星期是猜的，點此確認", systemImage: "questionmark.circle")
+                                                .font(.caption)
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .foregroundStyle(.orange)
+                                    }
+                                }
+                                if let note = d.mergeNote, d.weekdayGuessed {
+                                    Text(note).font(.caption).foregroundStyle(.orange)
+                                }
                             }
                         }
                     }
                 } header: {
-                    Text("辨識到 \(drafts.count) 堂課，請確認時間")
+                    Text(headerText)
                 } footer: {
-                    Text("請對照截圖確認星期和節次。節次換算用台科大的時間表；有錯的話，加入後可以點課堂編輯，或取消勾選。")
+                    Text("請對照截圖確認星期和節次。沒有星期標題的截圖，星期是推測的，要逐筆確認或改選後才能加入。")
                 }
             }
             .navigationTitle("匯入課表")
@@ -55,7 +103,7 @@ struct CourseImportView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("加入課表（\(selectedCount)）") { save() }
-                        .disabled(selectedCount == 0 || termEnd < termStart)
+                        .disabled(selectedCount == 0 || termEnd < termStart || hasUnknownWeekday)
                 }
             }
         }
@@ -63,7 +111,7 @@ struct CourseImportView: View {
 
     private func save() {
         let courses: [Course] = drafts.filter(\.isSelected).compactMap { d in
-            guard let s = d.startMinute, let e = d.endMinute, e > s else { return nil }
+            guard let s = d.startMinute, let e = d.endMinute, e > s, (1...7).contains(d.weekday) else { return nil }
             return Course(name: d.name, weekday: d.weekday, startMinute: s, endMinute: e,
                           location: d.location, termStart: termStart, termEnd: termEnd)
         }
