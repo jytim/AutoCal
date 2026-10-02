@@ -22,6 +22,8 @@ struct SettingsView: View {
                     Text("把今天的課堂、行程與空堂畫成鎖定畫面桌布。")
                 }
 
+                ClassReminderSection()
+
                 Section {
                     SecureField("貼上 Brave 搜尋金鑰", text: $braveKey)
                         .textInputAutocapitalization(.never)
