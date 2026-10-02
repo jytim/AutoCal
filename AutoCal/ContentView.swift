@@ -58,6 +58,11 @@ final class InputViewModel: ObservableObject {
         isParsing = false
     }
 
+    /// 還有衝突沒讓使用者選擇處理方式，不能加入（AI 不會替使用者決定）。
+    var hasUndecidedConflicts: Bool {
+        items.contains { $0.isSelected && $0.resolution == .undecided }
+    }
+
     func save() async {
         errorMessage = nil
         do {
@@ -114,6 +119,11 @@ struct ContentView: View {
                         ForEach($vm.items) { $item in
                             ItemCard(item: $item)
                         }
+                        if vm.hasUndecidedConflicts {
+                            Label("請先為每個衝突選擇處理方式，才能加入", systemImage: "hand.raised.fill")
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
                         Button {
                             Task { await vm.save() }
                         } label: {
@@ -122,6 +132,7 @@ struct ContentView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
+                        .disabled(vm.hasUndecidedConflicts)
                     }
                 }
                 .padding()

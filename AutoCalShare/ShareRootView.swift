@@ -42,6 +42,11 @@ struct ShareRootView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("確認要加入的項目").font(.headline)
                     ForEach($items) { $item in ItemCard(item: $item) }
+                    if hasUndecidedConflicts {
+                        Label("請先為每個衝突選擇處理方式，才能加入", systemImage: "hand.raised.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
                     Button {
                         Task { await save() }
                     } label: {
@@ -50,6 +55,7 @@ struct ShareRootView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .disabled(hasUndecidedConflicts)
                 }
                 .padding()
             }
@@ -70,6 +76,10 @@ struct ShareRootView: View {
             }
             .padding()
         }
+    }
+
+    private var hasUndecidedConflicts: Bool {
+        items.contains { $0.isSelected && $0.resolution == .undecided }
     }
 
     private var loadingText: String {

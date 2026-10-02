@@ -8,17 +8,28 @@ final class ConflictChecker {
     private let store = EKEventStore()
     private let llm = LLMClient()
 
-    /// 為每筆有衝突的行程填入 conflicts / suggestedStart / aiNote / resolution（預設採用 AI 建議）。
+    /// 為每筆有衝突的行程填入衝突資訊與 AI 建議。
+    /// 原則：AI 只提供建議（aiRecommendation），處理方式一律留給使用者選（resolution = .undecided）。
     func annotate(_ items: [ParsedItem]) async -> [ParsedItem] {
-        guard items.contains(where: Self.isTimedEvent) else { return items }
+        // 先記下 AI 最初解析出的時間，供決策紀錄使用（重新檢查時不覆蓋）
+        var result = items.map { item -> ParsedItem in
+            var it = item
+            if it.aiStart == nil && it.aiEnd == nil {
+                it.aiStart = item.start
+                it.aiEnd = item.end
+            }
+            return it
+        }
+        guard result.contains(where: Self.isTimedEvent) else { return result }
         // 讀取既有行程需要行事曆權限；被拒就略過檢查，不影響原本流程。
-        guard (try? await store.requestFullAccessToEvents()) == true else { return items }
+        guard (try? await store.requestFullAccessToEvents()) == true else { return result }
 
-        var result = items
         for i in result.indices {
             result[i].conflicts = []
             result[i].suggestedStart = nil
             result[i].aiNote = nil
+            result[i].aiRecommendation = nil
+            result[i].aiCanOverlap = nil
             result[i].resolution = .none
 
             guard Self.isTimedEvent(result[i]), let iv = Self.interval(of: result[i]) else { continue }
@@ -39,16 +50,19 @@ final class ConflictChecker {
             result[i].suggestedStart = freeSlot(for: i, in: result, start: start,
                                                 duration: end.timeIntervalSince(start))
 
+            // AI 只提供建議，不自動套用；處理方式一律留給使用者選。
+            result[i].resolution = .undecided
             if let verdict = try? await llm.judgeConcurrency(item: result[i], conflicts: conflicts) {
                 result[i].aiNote = verdict.reason
+                result[i].aiCanOverlap = verdict.canOverlap
                 if verdict.canOverlap {
-                    result[i].resolution = .overlap
+                    result[i].aiRecommendation = .overlap
                 } else {
-                    // 不能同時做：有空檔就建議移過去；沒有就先維持原時間，讓使用者自己決定
-                    result[i].resolution = result[i].suggestedStart != nil ? .move : .overlap
+                    // 不能同時做：有空檔就建議移過去；沒有就建議維持原時間（並讓使用者自行判斷）
+                    result[i].aiRecommendation = result[i].suggestedStart != nil ? .move : .overlap
                 }
             } else {
-                result[i].resolution = .overlap
+                result[i].aiRecommendation = .overlap
             }
             if result[i].suggestedStart == nil {
                 let note = "當天 23:00 前找不到同樣長度的空檔。"
@@ -58,7 +72,8 @@ final class ConflictChecker {
         return result
     }
 
-    /// 依使用者在卡片上的選擇調整項目：不加入的取消勾選、改時間的套用建議時段。
+    /// 依使用者在卡片上的選擇調整項目：不加入的取消勾選、改時間的套用建議時段，
+    /// 並把決策過程寫進 calendarNote（之後附到行事曆行程的備註）。
     nonisolated static func applyResolutions(_ items: [ParsedItem]) -> [ParsedItem] {
         items.map { item in
             var it = item
@@ -70,11 +85,41 @@ final class ConflictChecker {
                     it.start = newStart
                     it.end = newStart.addingTimeInterval(iv.1.timeIntervalSince(iv.0))
                 }
-            case .none, .overlap:
+            case .none, .overlap, .undecided:
                 break
+            }
+            if !it.conflicts.isEmpty {
+                it.calendarNote = decisionNote(for: it)
             }
             return it
         }
+    }
+
+    /// 組出要附在行事曆備註裡的 AI 判斷與使用者決策紀錄。
+    nonisolated private static func decisionNote(for item: ParsedItem) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "zh_TW")
+        df.dateFormat = "M/d HH:mm"
+        var lines = ["【AutoCal 衝突紀錄】"]
+        if let s = item.aiStart {
+            lines.append("AI 原本解析時間：\(df.string(from: s))")
+        }
+        if !item.conflicts.isEmpty {
+            let names = item.conflicts.map(\.title).joined(separator: "、")
+            lines.append("偵測到衝突：\(names)")
+        }
+        if let can = item.aiCanOverlap {
+            lines.append("AI 判斷：\(can ? "可同時進行" : "無法同時進行")" + (item.aiNote.map { " — \($0)" } ?? ""))
+        }
+        let choiceText: String
+        switch item.resolution {
+        case .overlap: choiceText = "一起排（維持原時間）"
+        case .move: choiceText = "改到建議時間\(item.suggestedStart.map { "（\(df.string(from: $0))）" } ?? "")"
+        case .skip: choiceText = "不加入"
+        case .none, .undecided: choiceText = "未明確選擇"
+        }
+        lines.append("使用者選擇：\(choiceText)")
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - 內部
