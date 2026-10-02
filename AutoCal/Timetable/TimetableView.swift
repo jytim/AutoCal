@@ -139,11 +139,19 @@ struct TimetableView: View {
                 let dayEvents = vm.events(on: day)
                 let lanes = vm.lanes(for: dayEvents)
                 ForEach(dayEvents) { e in
+                    // 撞時段的行程做成「疊在一起的卡片」：後面的往右露出一點邊、微微歪斜，
+                    // 比對半切成窄條寬，字才放得下。
                     let info = lanes[e.id] ?? (0, 1)
-                    let laneWidth = colWidth / CGFloat(info.count)
-                    eventBlock(e, width: laneWidth)
-                        .offset(x: x + CGFloat(info.lane) * laneWidth,
+                    let stagger: CGFloat = info.count > 1 ? min(colWidth * 0.22, 12) : 0
+                    let cardWidth = colWidth - stagger * CGFloat(info.count - 1)
+                    let tilt: Double = info.count > 1 ? (info.lane % 2 == 0 ? -1.6 : 1.6) : 0
+                    eventBlock(e, width: cardWidth)
+                        .rotationEffect(.degrees(tilt))
+                        .shadow(color: .black.opacity(info.count > 1 ? 0.28 : 0.1),
+                                radius: 1.5, x: 0, y: 1)
+                        .offset(x: x + stagger * CGFloat(info.lane),
                                 y: yPosition(of: e.start))
+                        .zIndex(Double(info.lane))
                         .onTapGesture { selected = e }
                 }
             }
@@ -179,8 +187,9 @@ struct TimetableView: View {
         .padding(.horizontal, 3)
         .padding(.vertical, 2)
         .frame(width: width - 2, height: height - 1, alignment: .topLeading)
-        .background(e.color.opacity(0.9))
+        .background(e.color)
         .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.7), lineWidth: 0.8))
         .padding(.leading, 1)
     }
 

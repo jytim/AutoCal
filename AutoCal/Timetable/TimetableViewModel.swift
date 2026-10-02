@@ -81,7 +81,7 @@ final class TimetableViewModel: ObservableObject {
                     end: e.endDate,
                     location: e.location,
                     notes: e.notes,
-                    color: Color(cgColor: e.calendar.cgColor))
+                    color: SubjectColor.color(for: e.title ?? ""))
             }
             .sorted { $0.start < $1.start }
     }
