@@ -78,6 +78,16 @@ struct ItemCard: View {
         return f
     }()
 
+    /// AI 建議的處理方式只用來顯示提示文字，不會預先選取——一律要使用者自己點選。
+    private var recommendationLabel: String {
+        switch item.aiRecommendation {
+        case .overlap: return "AI 建議：一起排"
+        case .move: return "AI 建議：改到建議時間"
+        case .skip: return "AI 建議：不加入"
+        default: return ""
+        }
+    }
+
     private var conflictSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("時間衝突", systemImage: "exclamationmark.triangle.fill")
@@ -88,11 +98,23 @@ struct ItemCard: View {
                     .font(.caption)
             }
             if let note = item.aiNote, !note.isEmpty {
-                Text("AI：\(note)")
+                Text("AI 判斷：\(note)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if !recommendationLabel.isEmpty {
+                Text(recommendationLabel)
+                    .font(.caption.bold())
+                    .foregroundStyle(.blue)
+            }
+
+            Text("請選擇處理方式（AI 不會替你決定）")
+                .font(.caption2)
+                .foregroundStyle(item.resolution == .undecided ? .red : .secondary)
+
+            // 刻意不綁定預設值：使用者沒點過之前，這裡不會有任何選項被選取。
             Picker("處理方式", selection: $item.resolution) {
+                Text("請選擇").tag(ParsedItem.Resolution.undecided).hidden()
                 Text("一起排").tag(ParsedItem.Resolution.overlap)
                 if let s = item.suggestedStart {
                     Text("改到 \(Self.hm.string(from: s))").tag(ParsedItem.Resolution.move)

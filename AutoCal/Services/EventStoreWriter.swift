@@ -53,6 +53,7 @@ final class EventStoreWriter {
         event.title = item.title
         event.location = item.location
         event.isAllDay = item.allDay
+        event.notes = item.calendarNote
 
         let start = item.start ?? Date()
         event.startDate = start

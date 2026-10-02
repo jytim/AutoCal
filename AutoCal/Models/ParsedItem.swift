@@ -27,20 +27,33 @@ struct ParsedItem: Identifiable, Codable, Equatable {
         let end: Date
     }
 
-    /// 有衝突時，使用者選擇的處理方式。
+    /// 有衝突時，使用者選擇的處理方式。只有使用者能改，AI 不會替使用者選。
     enum Resolution: String {
-        case none      // 沒有衝突
-        case overlap   // 照原時間排，和既有行程並行
-        case move      // 改到建議的空檔
-        case skip      // 不加入
+        case none       // 沒有衝突
+        case undecided  // 有衝突，使用者還沒選
+        case overlap    // 照原時間排，和既有行程並行
+        case move       // 改到建議的空檔
+        case skip       // 不加入（只能由使用者選）
     }
 
     var conflicts: [ConflictInfo] = []
     /// 當天找到的最近空檔（同樣長度）。
     var suggestedStart: Date?
     var resolution: Resolution = .none
+    /// AI 建議的處理方式（只供參考，不會自動套用）。
+    var aiRecommendation: Resolution?
+    /// AI 判斷能否同時進行；nil 表示沒判斷或判斷失敗。
+    var aiCanOverlap: Bool?
     /// AI 對「能不能同時做」的判斷理由。
     var aiNote: String?
+
+    // MARK: 紀錄用
+
+    /// AI 最初解析出的時間（使用者之後在卡片上改時間也不會覆蓋）。
+    var aiStart: Date?
+    var aiEnd: Date?
+    /// 寫入行事曆時附在行程備註裡的決策紀錄。
+    var calendarNote: String?
 
     // LLM 回傳的 JSON 只有這些欄位；其餘欄位由 app 自己補。
     enum CodingKeys: String, CodingKey {
