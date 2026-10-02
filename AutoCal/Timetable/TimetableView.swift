@@ -142,7 +142,7 @@ struct TimetableView: View {
                     // 撞時段的行程做成「疊在一起的卡片」：後面的往右露出一點邊（保持直的），
                     // 比對半切成窄條寬，字才放得下。
                     let info = lanes[e.id] ?? (0, 1)
-                    let stagger: CGFloat = info.count > 1 ? min(colWidth * 0.22, 12) : 0
+                    let stagger: CGFloat = info.count > 1 ? 4 : 0
                     let cardWidth = colWidth - stagger * CGFloat(info.count - 1)
                     eventBlock(e, width: cardWidth)
                         .shadow(color: .black.opacity(info.count > 1 ? 0.28 : 0.1),
