@@ -1,9 +1,21 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 
 /// 課表式的一週時間塊檢視：事件是方塊，週一到週五的空檔標成「空堂」。
 struct TimetableView: View {
     @StateObject private var vm = TimetableViewModel()
+    @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
+    @State private var formTarget: FormTarget?
+    @State private var importBox: ImportBox?
+    @State private var showPhotoPicker = false
+    @State private var pickedPhoto: PhotosPickerItem?
+    @State private var importing = false
+    @State private var importError: String?
+
+    private struct FormTarget: Identifiable { let id = UUID(); let course: Course? }
+    private struct ImportBox: Identifiable { let id = UUID(); let drafts: [CourseDraft] }
 
     private let hourHeight: CGFloat = 46
     private let timeColWidth: CGFloat = 34
@@ -35,22 +47,20 @@ struct TimetableView: View {
             VStack(spacing: 0) {
                 weekBar
                 if vm.accessDenied {
-                    Spacer()
-                    Label("需要行事曆權限才能顯示課表，請到「設定」開啟。", systemImage: "lock.fill")
-                        .font(.footnote)
+                    Label("沒有行事曆權限，目前只顯示課堂。可到「設定」開啟。", systemImage: "lock.fill")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .padding()
-                    Spacer()
-                } else {
-                    GeometryReader { geo in
-                        let colWidth = (geo.size.width - timeColWidth) / 7
-                        VStack(spacing: 0) {
-                            dayHeader(colWidth: colWidth)
-                            ScrollView {
-                                grid(colWidth: colWidth)
-                                    .frame(height: CGFloat(totalHours) * hourHeight, alignment: .topLeading)
-                                    .padding(.bottom, 80)
-                            }
+                        .padding(.horizontal)
+                        .padding(.bottom, 4)
+                }
+                GeometryReader { geo in
+                    let colWidth = (geo.size.width - timeColWidth) / 7
+                    VStack(spacing: 0) {
+                        dayHeader(colWidth: colWidth)
+                        ScrollView {
+                            grid(colWidth: colWidth)
+                                .frame(height: CGFloat(totalHours) * hourHeight, alignment: .topLeading)
+                                .padding(.bottom, 80)
                         }
                     }
                 }
@@ -58,11 +68,88 @@ struct TimetableView: View {
             .navigationTitle("課表")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear { Task { await vm.load() } }
+            .onReceive(courseStore.$courses) { _ in Task { await vm.load() } }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { formTarget = FormTarget(course: nil) } label: {
+                            Label("手動新增課堂", systemImage: "plus")
+                        }
+                        Button { showPhotoPicker = true } label: {
+                            Label("從截圖匯入課表", systemImage: "photo")
+                        }
+                    } label: { Image(systemName: "plus") }
+                }
+            }
+            .photosPicker(isPresented: $showPhotoPicker, selection: $pickedPhoto, matching: .images)
+            .onChange(of: pickedPhoto) { _, item in
+                guard let item else { return }
+                Task { await importFromPhoto(item) }
+            }
+            .overlay {
+                if importing {
+                    ProgressView("正在辨識課表…")
+                        .padding(24)
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+            }
+            .alert("匯入失敗", isPresented: Binding(get: { importError != nil },
+                                                  set: { if !$0 { importError = nil } })) {
+                Button("好") { importError = nil }
+            } message: { Text(importError ?? "") }
             .sheet(item: $selected) { event in
-                EventDetailSheet(event: event)
+                EventDetailSheet(
+                    event: event,
+                    onEdit: {
+                        guard let id = event.courseID,
+                              let c = courseStore.courses.first(where: { $0.id == id }) else { return }
+                        selected = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            formTarget = FormTarget(course: c)
+                        }
+                    },
+                    onSkip: {
+                        guard let id = event.courseID else { return }
+                        CourseStore.shared.skip(courseID: id, on: event.start)
+                        selected = nil
+                    },
+                    onDelete: {
+                        guard let id = event.courseID else { return }
+                        CourseStore.shared.delete(id: id)
+                        selected = nil
+                    })
                     .presentationDetents([.medium, .large])
             }
+            .sheet(item: $formTarget) { target in CourseFormView(editing: target.course) }
+            .sheet(item: $importBox) { box in CourseImportView(drafts: box.drafts) }
         }
+    }
+
+    // MARK: - 課表截圖匯入
+
+    private func importFromPhoto(_ item: PhotosPickerItem) async {
+        importing = true
+        defer { importing = false; pickedPhoto = nil }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                importError = "讀不到這張圖片"; return
+            }
+            let drafts = try await LLMClient().parseCourses(imageData: Self.downscaled(data))
+            if drafts.isEmpty { importError = "截圖裡沒有辨識到課堂" } else { importBox = ImportBox(drafts: drafts) }
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    /// 長邊超過 1600px 就縮小並轉成 JPEG，加快上傳與辨識。
+    private static func downscaled(_ data: Data, maxSide: CGFloat = 1600) -> Data {
+        guard let img = UIImage(data: data) else { return data }
+        let long = max(img.size.width, img.size.height)
+        let scale = min(1, maxSide / long)
+        let size = CGSize(width: img.size.width * scale, height: img.size.height * scale)
+        let out = UIGraphicsImageRenderer(size: size).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
+        return out.jpegData(compressionQuality: 0.85) ?? data
     }
 
     // MARK: - 週切換列
@@ -236,6 +323,9 @@ struct TimetableView: View {
 
 private struct EventDetailSheet: View {
     let event: TimetableEvent
+    var onEdit: () -> Void = {}
+    var onSkip: () -> Void = {}
+    var onDelete: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
 
     private static let full: DateFormatter = {
@@ -267,8 +357,19 @@ private struct EventDetailSheet: View {
                         Text(notes).font(.footnote)
                     }
                 }
+                if event.isCourse {
+                    Section {
+                        Button { onEdit() } label: { Label("編輯這門課", systemImage: "pencil") }
+                        Button { onSkip() } label: { Label("這天停課", systemImage: "moon.zzz") }
+                        Button(role: .destructive) { onDelete() } label: {
+                            Label("刪除整門課", systemImage: "trash")
+                        }
+                    } footer: {
+                        Text("課堂只存在 AutoCal 的課表，不會出現在行事曆。")
+                    }
+                }
             }
-            .navigationTitle("行程詳情")
+            .navigationTitle(event.isCourse ? "課堂詳情" : "行程詳情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }

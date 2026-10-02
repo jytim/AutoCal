@@ -35,6 +35,11 @@ targets:
         # 允許連家裡區網的 HTTP 模型伺服器（僅本機/區網位址）
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+    entitlements:
+      path: AutoCal/AutoCal.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.jiangyanting.autocal
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jiangyanting.autocal
@@ -72,6 +77,11 @@ targets:
                   OR ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
                 ).@count >= 1
               ).@count == 1
+    entitlements:
+      path: AutoCalShare/AutoCalShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.jiangyanting.autocal
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jiangyanting.autocal.share
