@@ -13,6 +13,16 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    NavigationLink {
+                        WallpaperSettingsView()
+                    } label: {
+                        Label("鎖定畫面桌布", systemImage: "iphone.gen3")
+                    }
+                } footer: {
+                    Text("把今天的課堂、行程與空堂畫成鎖定畫面桌布。")
+                }
+
+                Section {
                     SecureField("貼上 Brave 搜尋金鑰", text: $braveKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -42,7 +52,7 @@ struct SettingsView: View {
                 } header: {
                     Text("模型後端")
                 } footer: {
-                    Text("留空則使用預設（家中 3090）。")
+                    Text("留空則使用預設：家中 <內網主機A> 優先，連不到時自動改用 3090。填了自訂位址就只用那一台。")
                 }
             }
             .navigationTitle("設定")
