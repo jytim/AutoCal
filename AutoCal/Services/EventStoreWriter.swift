@@ -58,9 +58,14 @@ final class EventStoreWriter {
         let start = item.start ?? Date()
         event.startDate = start
         // 沒給結束時間就補一小時（整天行程補當天）
-        event.endDate = item.end ?? (item.allDay
+        let defaultEnd = (item.allDay
             ? Calendar.current.date(byAdding: .day, value: 1, to: start)
             : Calendar.current.date(byAdding: .hour, value: 1, to: start)) ?? start
+        if let e = item.end, e > start {
+            event.endDate = e
+        } else {
+            event.endDate = defaultEnd   // 沒給、或結束不晚於開始 → 用預設長度
+        }
         event.calendar = store.defaultCalendarForNewEvents
         try store.save(event, span: .thisEvent)
     }

@@ -135,7 +135,8 @@ final class ConflictChecker {
     /// 行程的時間區間；沒有結束時間就當一小時（和寫入時的預設一致）。
     nonisolated private static func interval(of item: ParsedItem) -> (Date, Date)? {
         guard let s = item.start else { return nil }
-        return (s, item.end ?? s.addingTimeInterval(3600))
+        if let e = item.end, e > s { return (s, e) }
+        return (s, s.addingTimeInterval(3600))
     }
 
     /// 和區間重疊的既有行程（整天的行程如假日不算衝突）。
