@@ -46,14 +46,22 @@ final class TimetableViewModel: ObservableObject {
     }
 
     init() {
+        weekStart = Self.defaultWeekStart()
+    }
+
+    /// 預設顯示的那一週的週一。週六、週日改看「下一週」（週一到週五已經過了，週末最想看的是下週的課）。
+    static func defaultWeekStart(now: Date = Date()) -> Date {
         var c = Calendar.current
         c.firstWeekday = 2
-        weekStart = c.dateInterval(of: .weekOfYear, for: Date())?.start ?? c.startOfDay(for: Date())
+        let monday = c.dateInterval(of: .weekOfYear, for: now)?.start ?? c.startOfDay(for: now)
+        let wd = c.component(.weekday, from: now)           // 1 = 週日、7 = 週六
+        if wd == 1 || wd == 7 { return c.date(byAdding: .day, value: 7, to: monday) ?? monday }
+        return monday
     }
 
     /// 本週的七天（週一～週日）。
     var days: [Date] {
-        (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+        (0..<5).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
     }
 
     func shiftWeek(by weeks: Int) {
@@ -62,7 +70,7 @@ final class TimetableViewModel: ObservableObject {
     }
 
     func goToThisWeek() {
-        weekStart = calendar.dateInterval(of: .weekOfYear, for: Date())?.start ?? weekStart
+        weekStart = Self.defaultWeekStart()
         Task { await load() }
     }
 
@@ -110,7 +118,7 @@ final class TimetableViewModel: ObservableObject {
     }
 
     /// 撞時段的行程分成並排的「車道」，回傳每筆的 (車道編號, 該群組車道總數)。
-    func lanes(for dayEvents: [TimetableEvent]) -> [String: (lane: Int, count: Int)] {
+    nonisolated static func lanes(for dayEvents: [TimetableEvent]) -> [String: (lane: Int, count: Int)] {
         var result: [String: (Int, Int)] = [:]
         var cluster: [TimetableEvent] = []
         var clusterEnd = Date.distantPast

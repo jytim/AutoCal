@@ -26,14 +26,6 @@ enum AppConfig {
         ]
     }
 
-    /// 校園行事曆（ICS 格式）。預設為台科大 114 學年度行事曆。
-    /// 每學年更新時，把新的 ICS 網址存進 UserDefaults 即可。
-    static var campusCalendarURL: URL? {
-        let s = UserDefaults.standard.string(forKey: "campus.icsURL")
-            ?? "https://www.academic.ntust.edu.tw/var/file/48/1048/img/788923882.ics"
-        return URL(string: s)
-    }
-
     /// Brave 搜尋 API 金鑰。只存在本機 UserDefaults，不進版本庫。
     static var braveAPIKey: String? {
         UserDefaults.standard.string(forKey: "brave.apiKey")
