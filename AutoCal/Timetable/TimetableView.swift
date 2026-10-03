@@ -7,22 +7,7 @@ struct TimetableView: View {
     @StateObject private var vm = TimetableViewModel()
     @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
-    @State private var formTarget: FormTarget?
-    @State private var importBox: ImportBox?
-    @State private var showPhotoPicker = false
-    @State private var pickedPhotos: [PhotosPickerItem] = []
-    @State private var importProgress = "正在辨識課表…"
-    @State private var importing = false
-    @State private var importError: String?
-
-    private struct FormTarget: Identifiable { let id = UUID(); let course: Course? }
-    private struct ImportBox: Identifiable {
-        let id = UUID()
-        let drafts: [CourseDraft]
-        var sourceCount = 1
-        var rawCount = 0
-        var failures: [String] = []
-    }
+    @StateObject private var add = CourseAddModel()
 
     private let hourHeight: CGFloat = 46
     private let timeColWidth: CGFloat = 34
@@ -78,34 +63,10 @@ struct TimetableView: View {
             .onReceive(courseStore.$courses) { _ in Task { await vm.load() } }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button { formTarget = FormTarget(course: nil) } label: {
-                            Label("手動新增課堂", systemImage: "plus")
-                        }
-                        Button { showPhotoPicker = true } label: {
-                            Label("從截圖匯入課表（可多張）", systemImage: "photo.on.rectangle")
-                        }
-                    } label: { Image(systemName: "plus") }
+                    CourseAddMenu(model: add)
                 }
             }
-            .photosPicker(isPresented: $showPhotoPicker, selection: $pickedPhotos,
-                          maxSelectionCount: 8, matching: .images)
-            .onChange(of: pickedPhotos) { _, items in
-                guard !items.isEmpty else { return }
-                Task { await importFromPhotos(items) }
-            }
-            .overlay {
-                if importing {
-                    ProgressView(importProgress)
-                        .padding(24)
-                        .background(.regularMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
-            }
-            .alert("匯入失敗", isPresented: Binding(get: { importError != nil },
-                                                  set: { if !$0 { importError = nil } })) {
-                Button("好") { importError = nil }
-            } message: { Text(importError ?? "") }
+            .courseAddFlow(add)
             .sheet(item: $selected) { event in
                 EventDetailSheet(
                     event: event,
@@ -114,7 +75,7 @@ struct TimetableView: View {
                               let c = courseStore.courses.first(where: { $0.id == id }) else { return }
                         selected = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            formTarget = FormTarget(course: c)
+                            add.formTarget = CourseAddModel.FormTarget(course: c)
                         }
                     },
                     onSkip: {
@@ -129,56 +90,7 @@ struct TimetableView: View {
                     })
                     .presentationDetents([.medium, .large])
             }
-            .sheet(item: $formTarget) { target in CourseFormView(editing: target.course) }
-            .sheet(item: $importBox) { box in
-                CourseImportView(drafts: box.drafts, sourceCount: box.sourceCount,
-                                 rawCount: box.rawCount, failures: box.failures)
-            }
         }
-    }
-
-    // MARK: - 課表截圖匯入
-
-    /// 一張課表放不下時可以多選幾張截圖：逐張辨識，再合併重複與被截斷的課。
-    private func importFromPhotos(_ items: [PhotosPickerItem]) async {
-        importing = true
-        defer { importing = false; pickedPhotos = [] }
-
-        var all: [CourseDraft] = []
-        var failures: [String] = []
-        for (i, item) in items.enumerated() {
-            importProgress = items.count > 1 ? "正在辨識第 \(i + 1) / \(items.count) 張…" : "正在辨識課表…"
-            do {
-                guard let data = try await item.loadTransferable(type: Data.self) else {
-                    failures.append("第 \(i + 1) 張：讀不到圖片"); continue
-                }
-                all += try await LLMClient().parseCourses(imageData: Self.downscaled(data),
-                                                            known: all.filter { $0.weekday != 0 })
-            } catch {
-                failures.append("第 \(i + 1) 張：\(error.localizedDescription)")
-            }
-        }
-
-        let merged = CourseDraft.merged(all)
-        if merged.isEmpty {
-            importError = failures.isEmpty ? "截圖裡沒有辨識到課堂" : failures.joined(separator: "\n")
-        } else {
-            importBox = ImportBox(drafts: merged, sourceCount: items.count,
-                                  rawCount: all.count, failures: failures)
-        }
-    }
-
-    /// 縮小並轉成 JPEG 加快上傳。一般截圖長邊 1600px；很長的長截圖（高是寬的兩倍以上）
-    /// 保留到 3000px，不然縮太小字會看不清楚。
-    private static func downscaled(_ data: Data) -> Data {
-        guard let img = UIImage(data: data) else { return data }
-        let long = max(img.size.width, img.size.height)
-        let short = max(1, min(img.size.width, img.size.height))
-        let maxSide: CGFloat = (long / short) > 2 ? 3000 : 1600
-        let scale = min(1, maxSide / long)
-        let size = CGSize(width: img.size.width * scale, height: img.size.height * scale)
-        let out = UIGraphicsImageRenderer(size: size).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
-        return out.jpegData(compressionQuality: 0.85) ?? data
     }
 
     // MARK: - 週切換列
