@@ -7,8 +7,10 @@ struct MonthView: View {
     @StateObject private var vm = MonthViewModel()
     @State private var selectedDay: Date?
 
-    private let cellHeight: CGFloat = 100
-    private let maxRows = 3
+    /// 格子高度與每格最多顯示幾列：iPhone 固定 100pt、3 列；
+    /// 寬螢幕（iPad / Mac）依可用高度把格子撐高，多顯示幾列行程。
+    @State private var cellHeight: CGFloat = 100
+    private var maxRows: Int { cellHeight >= 150 ? 5 : (cellHeight >= 120 ? 4 : 3) }
 
     private static let title: DateFormatter = {
         let f = DateFormatter()
@@ -31,18 +33,23 @@ struct MonthView: View {
                     Spacer()
                 } else {
                     weekdayHeader
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            ForEach(Array(vm.weeks.enumerated()), id: \.offset) { _, week in
-                                HStack(spacing: 0) {
-                                    ForEach(week, id: \.self) { day in
-                                        cell(for: day)
-                                            .onTapGesture { selectedDay = day }
+                    GeometryReader { geo in
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                ForEach(Array(vm.weeks.enumerated()), id: \.offset) { _, week in
+                                    HStack(spacing: 0) {
+                                        ForEach(week, id: \.self) { day in
+                                            cell(for: day)
+                                                .onTapGesture { selectedDay = day }
+                                        }
                                     }
                                 }
                             }
+                            .padding(.bottom, 80)
                         }
-                        .padding(.bottom, 80)
+                        .onAppear { updateCellHeight(geo.size.height) }
+                        .onChange(of: geo.size.height) { _, h in updateCellHeight(h) }
+                        .onChange(of: vm.weeks.count) { _, _ in updateCellHeight(geo.size.height) }
                     }
                 }
             }
@@ -72,6 +79,12 @@ struct MonthView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+    }
+
+    private func updateCellHeight(_ available: CGFloat) {
+        let rows = max(vm.weeks.count, 5)
+        // 留 90pt 給浮動分頁列；iPhone 上算出來通常小於 100，就維持 100
+        cellHeight = max(100, (available - 90) / CGFloat(rows))
     }
 
     private var weekdayHeader: some View {

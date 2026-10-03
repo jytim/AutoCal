@@ -27,6 +27,12 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # iPad 要支援四個方向（App Store 對支援分割畫面的 iPad App 的要求）；iPhone 維持直向
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # EventKit 權限說明（iOS 17+ full access）
         NSCalendarsFullAccessUsageDescription: "AutoCal 需要行事曆權限，才能把辨識出的行程加入你的行事曆。"
         NSRemindersFullAccessUsageDescription: "AutoCal 需要提醒事項權限，才能把辨識出的待辦加入你的提醒事項。"
