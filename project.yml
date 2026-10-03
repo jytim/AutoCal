@@ -93,3 +93,14 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jiangyanting.autocal.share
         GENERATE_INFOPLIST_FILE: NO
+
+schemes:
+  AutoCal:
+    build:
+      targets:
+        AutoCal: all
+        AutoCalShare: all
+    run:
+      config: Debug
+    archive:
+      config: Release
