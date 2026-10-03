@@ -241,6 +241,21 @@ struct TimetableView: View {
                     .offset(y: y)
             }
 
+            // 今天那一欄淡淡上色
+            if let idx = vm.days.firstIndex(where: { Calendar.current.isDateInToday($0) }) {
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.07))
+                    .frame(width: colWidth, height: CGFloat(totalHours) * hourHeight)
+                    .offset(x: timeColWidth + CGFloat(idx) * colWidth)
+            }
+            // 每天之間的細直線：從星期標頭一路往下對照
+            ForEach(0...7, id: \.self) { i in
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.28))
+                    .frame(width: 0.5, height: CGFloat(totalHours) * hourHeight)
+                    .offset(x: timeColWidth + CGFloat(i) * colWidth)
+            }
+
             // 每天一欄：空堂在底、事件方塊在上
             ForEach(Array(vm.days.enumerated()), id: \.offset) { index, day in
                 let x = timeColWidth + CGFloat(index) * colWidth
@@ -291,10 +306,12 @@ struct TimetableView: View {
             Text(e.title)
                 .font(.system(size: 10, weight: .semibold))
                 .lineLimit(height > 44 ? 3 : 1)
-            if height > 34 {
-                Text(Self.hm.string(from: e.start))
-                    .font(.system(size: 9))
-                    .opacity(0.9)
+            if height > 30 {
+                Text("\(Self.hm.string(from: e.start))–\(Self.hm.string(from: e.end))")
+                    .font(.system(size: 8).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .opacity(0.92)
             }
         }
         .foregroundStyle(.white)
@@ -309,21 +326,18 @@ struct TimetableView: View {
 
     private func freeBlock(_ slot: FreeSlot, colWidth: CGFloat) -> some View {
         let height = CGFloat(slot.duration / 3600) * hourHeight
-        let hours = Int(slot.duration / 3600)
-        let mins = Int(slot.duration.truncatingRemainder(dividingBy: 3600) / 60)
-        let label = hours > 0 ? (mins > 0 ? "\(hours)h\(mins)" : "\(hours)h") : "\(mins)m"
         return RoundedRectangle(cornerRadius: 5)
             .strokeBorder(Color.green.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
             .background(Color.green.opacity(0.07).clipShape(RoundedRectangle(cornerRadius: 5)))
             .overlay(alignment: .top) {
-                if height > 30 {
-                    VStack(spacing: 0) {
-                        Text("空堂").font(.system(size: 9, weight: .semibold))
-                        Text(label).font(.system(size: 9))
-                    }
+                // 空堂不寫字，只寫起訖時間
+                Text("\(Self.hm.string(from: slot.start))–\(Self.hm.string(from: slot.end))")
+                    .font(.system(size: 8).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .foregroundStyle(Color.green)
                     .padding(.top, 3)
-                }
+                    .padding(.horizontal, 2)
             }
             .frame(width: colWidth - 2, height: height - 1)
             .padding(.leading, 1)

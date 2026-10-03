@@ -23,9 +23,15 @@ struct ItemCard: View {
                 .pickerStyle(.segmented)
                 .frame(width: 140)
                 Spacer()
-                Toggle("", isOn: $item.isSelected)
-                    .labelsHidden()
+                // 關掉就不會加入這一筆（一次解析出好幾筆時，用來挑要哪幾筆）
+                Toggle("加入", isOn: $item.isSelected)
+                    .fixedSize()
             }
+            Text(item.type == .event
+                 ? "行程：有明確時間，會寫進「行事曆」"
+                 : "待辦：只看截止時間，會寫進「提醒事項」")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
 
             TextField("標題", text: $item.title)
                 .font(.headline)
@@ -35,8 +41,29 @@ struct ItemCard: View {
                 DatePicker("開始",
                            selection: Binding(
                             get: { item.start ?? Date() },
-                            set: { item.start = $0; item.timeWarning = nil }),
+                            set: { new in
+                                let old = item.start
+                                item.start = new
+                                // 已經有明確結束時間時，維持原本的長度一起平移
+                                if let e = item.end, let o = old {
+                                    item.end = new.addingTimeInterval(e.timeIntervalSince(o))
+                                }
+                                item.timeWarning = nil
+                            }),
                            displayedComponents: item.allDay ? [.date] : [.date, .hourAndMinute])
+                if !item.allDay {
+                    DatePicker("結束",
+                               selection: Binding(
+                                get: { item.end ?? (item.start ?? Date()).addingTimeInterval(3600) },
+                                set: { item.end = $0 }),
+                               in: (item.start ?? Date())...,
+                               displayedComponents: [.date, .hourAndMinute])
+                    if item.end == nil {
+                        Text("沒寫結束時間，先抓 1 小時，可以自己改")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Toggle("整天", isOn: $item.allDay)
                     .font(.subheadline)
             } else {
