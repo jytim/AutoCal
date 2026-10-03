@@ -10,20 +10,12 @@ final class InputViewModel: ObservableObject {
 
     private let llm = LLMClient()
     private let writer = EventStoreWriter()
-    private let campus = CampusCalendarService()
     private let web = WebSearchService()
     private let checker = ConflictChecker()
 
     func parse() async {
         await run(emptyMessage: { _ in "沒有辨識到任何行程或待辦。" }) { [llm] q in
             try await llm.parse(text: q)
-        }
-    }
-
-    /// 把輸入當成查詢，去校園行事曆找對應的事件。
-    func searchCampus() async {
-        await run(emptyMessage: { "行事曆裡找不到「\($0)」相關的事件。" }) { [campus] q in
-            try await campus.search(query: q)
         }
     }
 
@@ -178,16 +170,6 @@ struct ContentView: View {
                     Task { await vm.parse() }
                 } label: {
                     Label("解析", systemImage: "wand.and.stars")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .disabled(vm.text.trimmingCharacters(in: .whitespaces).isEmpty)
-
-                Button {
-                    Task { await vm.searchCampus() }
-                } label: {
-                    Label("查校園行事曆", systemImage: "graduationcap")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)

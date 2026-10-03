@@ -5,7 +5,8 @@ import SwiftUI
 /// 這樣當天的其他行程不會被擠成「+N個」。
 struct MonthView: View {
     @StateObject private var vm = MonthViewModel()
-    @State private var selectedDay: Date?
+    /// 點某一天時呼叫（由外層切到「日程」分頁並顯示那一天）。
+    var onSelectDay: (Date) -> Void = { _ in }
 
     /// 格子高度與每格最多顯示幾列：iPhone 固定 100pt、3 列；
     /// 寬螢幕（iPad / Mac）依可用高度把格子撐高，多顯示幾列行程。
@@ -40,7 +41,7 @@ struct MonthView: View {
                                     HStack(spacing: 0) {
                                         ForEach(week, id: \.self) { day in
                                             cell(for: day)
-                                                .onTapGesture { selectedDay = day }
+                                                .onTapGesture { onSelectDay(day) }
                                         }
                                     }
                                 }
@@ -56,11 +57,6 @@ struct MonthView: View {
             .navigationTitle("月曆")
             .navigationBarTitleDisplayMode(.inline)
             .onAppear { Task { await vm.load() } }
-            .sheet(item: Binding(get: { selectedDay.map(DayID.init) },
-                                 set: { selectedDay = $0?.day })) { id in
-                DaySheet(day: id.day, spans: vm.spans(on: id.day), singles: vm.singles(on: id.day))
-                    .presentationDetents([.medium, .large])
-            }
         }
     }
 
@@ -220,78 +216,5 @@ struct MonthView: View {
             }
         }
         .padding(.bottom, 2)
-    }
-}
-
-// MARK: - 點一天看詳情
-
-private struct DayID: Identifiable {
-    let day: Date
-    var id: Date { day }
-}
-
-private struct DaySheet: View {
-    let day: Date
-    let spans: [TripSpan]
-    let singles: [MonthEvent]
-    @Environment(\.dismiss) private var dismiss
-
-    private static let header: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
-        f.dateFormat = "M月d日 EEEE"
-        return f
-    }()
-    private static let hm: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
-        f.dateFormat = "HH:mm"
-        return f
-    }()
-    private static let md: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
-        f.dateFormat = "M/d"
-        return f
-    }()
-
-    var body: some View {
-        NavigationStack {
-            List {
-                if spans.isEmpty && singles.isEmpty {
-                    Text("這天沒有行程").foregroundStyle(.secondary)
-                }
-                ForEach(spans) { s in
-                    row(s.event,
-                        subtitle: "\(Self.md.string(from: s.event.firstDay)) – \(Self.md.string(from: s.event.lastDay))（第\(s.dayNumber)／\(s.totalDays)天）")
-                }
-                ForEach(singles) { e in
-                    row(e, subtitle: e.isAllDay ? "整天"
-                        : "\(Self.hm.string(from: e.start)) – \(Self.hm.string(from: e.end))")
-                }
-            }
-            .navigationTitle(Self.header.string(from: day))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } }
-            }
-        }
-    }
-
-    private func row(_ e: MonthEvent, subtitle: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Circle().fill(e.color).frame(width: 8, height: 8)
-                Text(e.title).font(.headline)
-            }
-            Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-            if let loc = e.location, !loc.isEmpty {
-                Label(loc, systemImage: "mappin.and.ellipse").font(.footnote)
-            }
-            if let notes = e.notes, !notes.isEmpty {
-                Text(notes).font(.footnote).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 2)
     }
 }
