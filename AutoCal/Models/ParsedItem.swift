@@ -46,6 +46,8 @@ struct ParsedItem: Identifiable, Codable, Equatable {
     var aiCanOverlap: Bool?
     /// AI 對「能不能同時做」的判斷理由。
     var aiNote: String?
+    /// 時間可疑的提醒（寫的幾點和解析結果對不上、或日期已過），由 TimeSanity 填入。
+    var timeWarning: String?
 
     // MARK: 紀錄用
 

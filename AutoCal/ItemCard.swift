@@ -35,7 +35,7 @@ struct ItemCard: View {
                 DatePicker("開始",
                            selection: Binding(
                             get: { item.start ?? Date() },
-                            set: { item.start = $0 }),
+                            set: { item.start = $0; item.timeWarning = nil }),
                            displayedComponents: item.allDay ? [.date] : [.date, .hourAndMinute])
                 Toggle("整天", isOn: $item.allDay)
                     .font(.subheadline)
@@ -43,7 +43,7 @@ struct ItemCard: View {
                 DatePicker("截止",
                            selection: Binding(
                             get: { item.start ?? item.end ?? Date() },
-                            set: { item.start = $0 }),
+                            set: { item.start = $0; item.timeWarning = nil }),
                            displayedComponents: [.date, .hourAndMinute])
             }
 
@@ -57,6 +57,11 @@ struct ItemCard: View {
 
             if item.start == nil {
                 Label("時間不確定，請確認", systemImage: "questionmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if let w = item.timeWarning {
+                Label(w, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
