@@ -137,6 +137,9 @@ struct ContentView: View {
                     }
                 }
                 .padding()
+                // iPad / Mac 上不要把輸入框和按鈕拉到全寬：限制寬度並置中
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
             }
             .navigationTitle("AutoCal")
             // 點空白處或往下滑都收起鍵盤
