@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("brave.apiKey") private var braveKey = ""
     @AppStorage("llm.baseURL") private var llmBaseURL = ""
     @AppStorage("llm.model") private var llmModel = ""
+    @AppStorage(EventColor.followKey) private var followCalendarColor = true
 
     var body: some View {
         NavigationStack {
@@ -19,6 +20,12 @@ struct SettingsView: View {
                     }
                 } footer: {
                     Text("把今天的課堂、行程與空堂畫成鎖定畫面桌布。")
+                }
+
+                Section {
+                    Toggle("行程顏色跟隨行事曆", isOn: $followCalendarColor)
+                } footer: {
+                    Text("開啟：行程用 Apple 行事曆裡該行事曆的顏色（到「行事曆」App 改顏色，這裡就跟著變）。關閉：依標題自動配色。課堂的顏色在編輯課堂時自己選。")
                 }
 
                 ClassReminderSection()

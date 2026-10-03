@@ -16,6 +16,8 @@ struct Course: Identifiable, Codable, Equatable {
     var termEnd: Date
     /// 停課日（當天 00:00）
     var skipDates: [Date] = []
+    /// 使用者指定的顏色（6 位 hex）；nil = 依課名自動配色。
+    var colorHex: String?
 
     static let weekdayNames = ["一", "二", "三", "四", "五", "六", "日"]
     var weekdayName: String { "週" + Self.weekdayNames[max(0, min(6, weekday - 1))] }

@@ -1,4 +1,5 @@
 import SwiftUI
+import EventKit
 
 /// 科目顏色：同一個科目（用標題判斷）永遠是同一個顏色，
 /// 第一次出現時才分配，分配結果存在手機上，之後不再變。
@@ -37,5 +38,43 @@ enum SubjectColor {
 
     private static func normalize(_ title: String) -> String {
         title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+/// 行程／課堂的顏色來源：
+/// - Apple 行事曆的行程：預設跟隨「該行事曆」的顏色（和內建行事曆 App 一致），也可在設定改回依標題自動配色。
+/// - 課堂：可以自己指定顏色，沒指定就依課名自動配色。
+enum EventColor {
+    static let followKey = "color.followCalendar"
+
+    static var followCalendar: Bool {
+        UserDefaults.standard.object(forKey: followKey) as? Bool ?? true
+    }
+
+    static func color(for event: EKEvent) -> Color {
+        if followCalendar, let cg = event.calendar?.cgColor { return Color(cgColor: cg) }
+        return SubjectColor.color(for: event.title ?? "")
+    }
+
+    static func color(for course: Course) -> Color {
+        if let hex = course.colorHex, let c = Color(hex: hex) { return c }
+        return SubjectColor.color(for: course.name)
+    }
+}
+
+extension Color {
+    init?(hex: String) {
+        var h = hex.trimmingCharacters(in: .whitespaces)
+        if h.hasPrefix("#") { h.removeFirst() }
+        guard h.count == 6, let v = UInt32(h, radix: 16) else { return nil }
+        self.init(red: Double((v >> 16) & 0xFF) / 255,
+                  green: Double((v >> 8) & 0xFF) / 255,
+                  blue: Double(v & 0xFF) / 255)
+    }
+
+    var hexString: String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "%02X%02X%02X", Int(round(r * 255)), Int(round(g * 255)), Int(round(b * 255)))
     }
 }

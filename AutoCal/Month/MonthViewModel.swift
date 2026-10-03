@@ -100,7 +100,7 @@ final class MonthViewModel: ObservableObject {
                 isAllDay: e.isAllDay,
                 location: e.location,
                 notes: e.notes,
-                color: SubjectColor.color(for: e.title ?? ""),
+                color: EventColor.color(for: e),
                 firstDay: firstDay,
                 lastDay: lastDay)
         }
