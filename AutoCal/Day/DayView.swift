@@ -7,11 +7,10 @@ struct DayView: View {
     @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
     @State private var courseToEdit: Course?
+    /// 被點到最前面的疊放卡片（nil = 照預設順序）。
+    @State private var front: String?
 
-    private let hourHeight: CGFloat = 56
     private let timeColWidth: CGFloat = 40
-
-    private var totalHours: Int { DayViewModel.endHour - DayViewModel.startHour }
 
     private static let title: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "zh_TW"); f.dateFormat = "M月d日 EEEE"; return f
@@ -105,78 +104,95 @@ struct DayView: View {
 
     // MARK: - 時間軸
 
+    /// 顯示的時段：預設 8–22 點，有行程超出就往外擴，讓整天剛好塞進一頁、不用捲動。
+    private var hourRange: (start: Int, end: Int) {
+        let cal = Calendar.current
+        var s = 8, e = 22
+        for ev in vm.timed {
+            s = min(s, cal.component(.hour, from: ev.start))
+            let endH = cal.component(.hour, from: ev.end) + (cal.component(.minute, from: ev.end) > 0 ? 1 : 0)
+            e = max(e, ev.end > cal.startOfDay(for: vm.day).addingTimeInterval(86400 - 1) ? 24 : endH)
+        }
+        return (max(s, 0), min(max(e, s + 1), 24))
+    }
+
     private var timeline: some View {
         GeometryReader { geo in
+            let r = hourRange
+            let hours = r.end - r.start
+            // 底部留給浮動的分頁列，整天才不會被蓋住
+            let hh = min((geo.size.height - 84) / CGFloat(hours), 64)
             let contentWidth = geo.size.width - timeColWidth - 12
-            ScrollViewReader { proxy in
-                ScrollView {
-                    ZStack(alignment: .topLeading) {
-                        ForEach(0..<totalHours, id: \.self) { i in
-                            let y = CGFloat(i) * hourHeight
-                            Text(String(format: "%02d", DayViewModel.startHour + i))
-                                .font(.system(size: 11)).foregroundStyle(.secondary)
-                                .frame(width: timeColWidth - 6, alignment: .trailing)
-                                .offset(y: y - 7)
-                            Rectangle()
-                                .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
-                                .padding(.leading, timeColWidth).offset(y: y)
-                            // 捲動定位用的隱形錨點
-                            Color.clear.frame(width: 1, height: 1).id(DayViewModel.startHour + i).offset(y: y)
-                        }
-
-                        let lanes = TimetableViewModel.lanes(for: vm.timed)
-                        ForEach(vm.timed) { e in
-                            let info = lanes[e.id] ?? (0, 1)
-                            let stagger: CGFloat = info.count > 1 ? 10 : 0
-                            let width = contentWidth - stagger * CGFloat(info.count - 1)
-                            block(e, width: width, stacked: info.count > 1)
-                                .shadow(color: .black.opacity(info.count > 1 ? 0.25 : 0.08), radius: 1.5, y: 1)
-                                .offset(x: timeColWidth + 6 + stagger * CGFloat(info.lane), y: y(of: e.start))
-                                .zIndex(Double(info.lane))
-                                .onTapGesture { selected = e }
-                        }
-
-                        nowLine(width: geo.size.width - timeColWidth)
-                    }
-                    .frame(height: CGFloat(totalHours) * hourHeight, alignment: .topLeading)
-                    .padding(.bottom, 90)
+            ZStack(alignment: .topLeading) {
+                ForEach(0..<hours, id: \.self) { i in
+                    let y = CGFloat(i) * hh
+                    Text(String(format: "%02d", r.start + i))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .frame(width: timeColWidth - 6, alignment: .trailing)
+                        .offset(y: y - 7)
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
+                        .padding(.leading, timeColWidth).offset(y: y)
                 }
-                .onAppear { scrollToRelevantHour(proxy) }
-                .onChange(of: vm.day) { _, _ in scrollToRelevantHour(proxy) }
-                .onChange(of: vm.timed.count) { _, _ in scrollToRelevantHour(proxy) }
+
+                let lanes = TimetableViewModel.lanes(for: vm.timed)
+                ForEach(vm.timed) { e in
+                    let info = lanes[e.id] ?? (0, 1)
+                    let stagger: CGFloat = info.count > 1 ? 10 : 0
+                    let width = contentWidth - stagger * CGFloat(info.count - 1)
+                    let isFront = front == e.id
+                    // 預設最後一層在最上面；點一下底下的卡片可以拉到最前面
+                    let onTop = info.count > 1 && (isFront || (front == nil && info.lane == info.count - 1))
+                    // 疊在後面的卡片至少要露出一條標題的高度；前面那張往下推一點（下緣不動）
+                    let baseY = y(of: e.start, hh: hh, startHour: r.start)
+                    let behindTop = vm.timed.compactMap { o -> CGFloat? in
+                        guard let oi = lanes[o.id], oi.lane == info.lane - 1, o.start <= e.start, o.end > e.start
+                        else { return nil }
+                        return y(of: o.start, hh: hh, startHour: r.start)
+                    }.max()
+                    let shift = max(0, (behindTop.map { $0 + 15 } ?? 0) - baseY)
+                    block(e, width: width, stacked: info.count > 1, hh: hh, startHour: r.start,
+                          totalH: CGFloat(hours) * hh, shift: shift)
+                        .shadow(color: .black.opacity(info.count > 1 ? 0.25 : 0.08), radius: 1.5, y: 1)
+                        .offset(x: timeColWidth + 6 + stagger * CGFloat(info.lane),
+                                y: baseY + shift)
+                        .zIndex(isFront ? 100 : Double(info.lane))
+                        .onTapGesture {
+                            if info.count > 1 && !onTop {
+                                withAnimation(.easeInOut(duration: 0.2)) { front = e.id }
+                            } else {
+                                selected = e
+                            }
+                        }
+                }
+
+                nowLine(width: geo.size.width - timeColWidth, hh: hh, startHour: r.start, totalH: CGFloat(hours) * hh)
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .padding(.top, 7)
         }
+        .onChange(of: vm.day) { _, _ in front = nil }
+        .onChange(of: vm.timed.count) { _, _ in front = nil }
     }
 
-    /// 今天捲到現在前一小時；其他天捲到第一件事前一小時（沒事就 8 點）。
-    private func scrollToRelevantHour(_ proxy: ScrollViewProxy) {
-        let cal = Calendar.current
-        var hour = 8
-        if cal.isDateInToday(vm.day) {
-            hour = cal.component(.hour, from: Date()) - 1
-        } else if let first = vm.timed.first {
-            hour = cal.component(.hour, from: first.start) - 1
-        }
-        hour = min(max(hour, DayViewModel.startHour), DayViewModel.endHour - 1)
-        DispatchQueue.main.async { proxy.scrollTo(hour, anchor: .top) }
-    }
-
-    private func y(of date: Date) -> CGFloat {
+    private func y(of date: Date, hh: CGFloat, startHour: Int) -> CGFloat {
         let c = Calendar.current
         let minutes = c.component(.hour, from: date) * 60 + c.component(.minute, from: date)
-        return max(CGFloat(minutes - DayViewModel.startHour * 60) / 60, 0) * hourHeight
+        return max(CGFloat(minutes - startHour * 60) / 60, 0) * hh
     }
 
-    private func block(_ e: TimetableEvent, width: CGFloat, stacked: Bool) -> some View {
+    private func block(_ e: TimetableEvent, width: CGFloat, stacked: Bool,
+                       hh: CGFloat, startHour: Int, totalH: CGFloat, shift: CGFloat) -> some View {
         // 高度直接用「時間長度」算，這樣結束在午夜（24:00）的行程也不會算錯
-        let top = y(of: e.start)
-        let natural = CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hourHeight
-        let height = min(max(natural, 26), CGFloat(totalHours) * hourHeight - top)
+        let top = y(of: e.start, hh: hh, startHour: startHour)
+        let natural = CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
+        let height = min(max(natural - shift, 22), max(totalH - top - shift, 22))
+        let compact = height < 30
         return VStack(alignment: .leading, spacing: 2) {
             Text(e.title)
-                .font(.system(size: stacked ? 13 : 14, weight: .semibold))
+                .font(.system(size: compact ? 12 : (stacked ? 12 : 14), weight: .semibold))
                 .lineLimit(height > 60 ? 2 : 1)
-            if height > 36 {
+            if height > 34 {
                 Text("\(Self.hm.string(from: e.start))–\(Self.hm.string(from: e.end))")
                     .font(.system(size: 12).monospacedDigit())
                     .opacity(0.92)
@@ -189,8 +205,8 @@ struct DayView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 8)
         // 疊在一起時，後面那張只露出一小條，上下留白要小，標題才不會被前面那張蓋住
-        .padding(.top, stacked ? 2 : 5)
-        .padding(.bottom, 5)
+        .padding(.top, (stacked || compact) ? 1 : 5)
+        .padding(.bottom, compact ? 0 : 5)
         .frame(width: width, height: height - 1, alignment: .topLeading)
         .background(e.color)
         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -198,10 +214,10 @@ struct DayView: View {
     }
 
     @ViewBuilder
-    private func nowLine(width: CGFloat) -> some View {
+    private func nowLine(width: CGFloat, hh: CGFloat, startHour: Int, totalH: CGFloat) -> some View {
         if Calendar.current.isDateInToday(vm.day) {
-            let yy = y(of: Date())
-            if yy > 0 && yy < CGFloat(totalHours) * hourHeight {
+            let yy = y(of: Date(), hh: hh, startHour: startHour)
+            if yy > 0 && yy < totalH {
                 Rectangle().fill(Color.red).frame(width: width, height: 1)
                     .offset(x: timeColWidth, y: yy)
                 Circle().fill(Color.red).frame(width: 7, height: 7)

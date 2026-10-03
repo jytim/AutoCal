@@ -91,6 +91,8 @@ final class DayViewModel: ObservableObject {
                 courseID: o.course.id))
         }
 
+        // 連按切換日期時，慢回來的舊結果不能蓋掉新的
+        guard calendar.startOfDay(for: day) == dayStart else { return }
         timed = timedOut.sorted { $0.start < $1.start }
         allDay = allDayOut.sorted { $0.title < $1.title }
     }
