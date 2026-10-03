@@ -90,7 +90,7 @@ final class TimetableViewModel: ObservableObject {
                             end: e.endDate,
                             location: e.location,
                             notes: e.notes,
-                            color: SubjectColor.color(for: e.title ?? ""))
+                            color: EventColor.color(for: e))
                     }
             }
         } else {
@@ -105,7 +105,7 @@ final class TimetableViewModel: ObservableObject {
                            end: o.end,
                            location: o.course.location,
                            notes: nil,
-                           color: SubjectColor.color(for: o.course.name),
+                           color: EventColor.color(for: o.course),
                            courseID: o.course.id)
         }
         events = (fromCalendar + fromCourses).sorted { $0.start < $1.start }

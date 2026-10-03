@@ -12,6 +12,8 @@ struct CourseFormView: View {
     @State private var location: String
     @State private var termStart: Date
     @State private var termEnd: Date
+    @State private var color: Color
+    @State private var customColor: Bool
 
     init(editing: Course?) {
         self.editing = editing
@@ -26,6 +28,8 @@ struct CourseFormView: View {
         _start = State(initialValue: time(editing?.startMinute ?? 9 * 60 + 10))
         _end = State(initialValue: time(editing?.endMinute ?? 10 * 60))
         _location = State(initialValue: editing?.location ?? "")
+        _color = State(initialValue: editing.map { EventColor.color(for: $0) } ?? Color(red: 0.23, green: 0.51, blue: 0.96))
+        _customColor = State(initialValue: editing?.colorHex != nil)
         _termStart = State(initialValue: editing?.termStart ?? weekStart)
         _termEnd = State(initialValue: editing?.termEnd
                          ?? cal.date(byAdding: .day, value: 18 * 7 - 1, to: weekStart) ?? weekStart)
@@ -47,6 +51,12 @@ struct CourseFormView: View {
                 Section("課程") {
                     TextField("課程名稱", text: $name)
                     TextField("教室（可留空）", text: $location)
+                    ColorPicker("顏色", selection: Binding(get: { color },
+                                                         set: { color = $0; customColor = true }),
+                                supportsOpacity: false)
+                    if customColor {
+                        Button("改回自動配色") { customColor = false }.font(.footnote)
+                    }
                 }
                 Section("每週上課時間") {
                     Picker("星期", selection: $weekday) {
@@ -85,6 +95,7 @@ struct CourseFormView: View {
         course.location = loc.isEmpty ? nil : loc
         course.termStart = termStart
         course.termEnd = termEnd
+        course.colorHex = customColor ? color.hexString : nil
         if editing == nil { CourseStore.shared.add([course]) } else { CourseStore.shared.update(course) }
         dismiss()
     }

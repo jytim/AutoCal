@@ -75,7 +75,7 @@ final class DayViewModel: ObservableObject {
                         end: min(en, dayEnd),
                         location: e.location,
                         notes: e.notes,
-                        color: SubjectColor.color(for: title)))
+                        color: EventColor.color(for: e)))
                 }
             }
         } else {
@@ -87,7 +87,7 @@ final class DayViewModel: ObservableObject {
                 id: "course-" + o.id, title: o.course.name,
                 start: o.start, end: o.end,
                 location: o.course.location, notes: nil,
-                color: SubjectColor.color(for: o.course.name),
+                color: EventColor.color(for: o.course),
                 courseID: o.course.id))
         }
 

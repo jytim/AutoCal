@@ -66,7 +66,12 @@ final class EventStoreWriter {
         } else {
             event.endDate = defaultEnd   // 沒給、或結束不晚於開始 → 用預設長度
         }
-        event.calendar = store.defaultCalendarForNewEvents
+        if let id = item.calendarID, let cal = store.calendar(withIdentifier: id),
+           cal.allowsContentModifications {
+            event.calendar = cal
+        } else {
+            event.calendar = store.defaultCalendarForNewEvents
+        }
         try store.save(event, span: .thisEvent)
     }
 

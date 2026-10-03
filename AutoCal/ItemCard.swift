@@ -3,6 +3,7 @@ import SwiftUI
 /// 單一解析項目的可編輯確認卡片。
 struct ItemCard: View {
     @Binding var item: ParsedItem
+    @State private var calendars: [CalendarChoice] = []
 
     private static let df: DateFormatter = {
         let f = DateFormatter()
@@ -66,6 +67,22 @@ struct ItemCard: View {
                 }
                 Toggle("整天", isOn: $item.allDay)
                     .font(.subheadline)
+                if calendars.count > 1 {
+                    HStack {
+                        Text("行事曆").font(.subheadline)
+                        Spacer()
+                        Picker("行事曆", selection: Binding(
+                            get: { item.calendarID ?? calendars.first(where: \.isDefault)?.id ?? "" },
+                            set: { item.calendarID = $0 })) {
+                            ForEach(calendars) { c in
+                                Label(c.title, systemImage: "circle.fill")
+                                    .tint(c.color)
+                                    .tag(c.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                }
             } else {
                 DatePicker("截止",
                            selection: Binding(
@@ -101,6 +118,7 @@ struct ItemCard: View {
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .opacity(item.isSelected && item.resolution != .skip ? 1 : 0.5)
+        .task { calendars = CalendarChoice.load() }
     }
 
     private static let hm: DateFormatter = {

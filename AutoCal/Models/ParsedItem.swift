@@ -56,6 +56,8 @@ struct ParsedItem: Identifiable, Codable, Equatable {
     var aiEnd: Date?
     /// 寫入行事曆時附在行程備註裡的決策紀錄。
     var calendarNote: String?
+    /// 要寫進哪個 Apple 行事曆（nil = 系統預設）。使用者在確認卡片上選。
+    var calendarID: String?
 
     // LLM 回傳的 JSON 只有這些欄位；其餘欄位由 app 自己補。
     enum CodingKeys: String, CodingKey {

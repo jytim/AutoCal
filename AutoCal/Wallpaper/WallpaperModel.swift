@@ -136,7 +136,7 @@ enum WallpaperContentBuilder {
                                              start: max(evStart, dayStart),
                                              end: min(evEnd, dayEnd),
                                              location: e.location,
-                                             color: SubjectColor.color(for: title),
+                                             color: EventColor.color(for: e),
                                              isCourse: false))
                 }
             }
@@ -144,7 +144,7 @@ enum WallpaperContentBuilder {
         for o in CourseStore.shared.occurrences(on: dayStart) {
             out.append(WallpaperItem(title: o.course.name, start: o.start, end: o.end,
                                      location: o.course.location,
-                                     color: SubjectColor.color(for: o.course.name),
+                                     color: EventColor.color(for: o.course),
                                      isCourse: true))
         }
         return (out.sorted { $0.start < $1.start }, chips)
