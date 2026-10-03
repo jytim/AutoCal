@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("llm.baseURL") private var llmBaseURL = ""
     @AppStorage("llm.model") private var llmModel = ""
     @AppStorage(EventColor.followKey) private var followCalendarColor = true
+    @AppStorage("ui.showTimetable") private var showTimetable = true
 
     var body: some View {
         NavigationStack {
@@ -20,6 +21,17 @@ struct SettingsView: View {
                     }
                 } footer: {
                     Text("把今天的課堂、行程與空堂畫成鎖定畫面桌布。")
+                }
+
+                Section {
+                    Toggle("顯示課表分頁", isOn: $showTimetable)
+                    NavigationLink {
+                        CourseManageView()
+                    } label: {
+                        Label("課堂管理", systemImage: "books.vertical")
+                    }
+                } footer: {
+                    Text("不是學生可以關掉課表分頁。課堂資料仍然保留，衝突偵測、上課提醒、鎖定畫面桌布都照常使用；要新增或修改課堂就從「課堂管理」進去。")
                 }
 
                 Section {

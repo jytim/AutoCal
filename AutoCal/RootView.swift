@@ -6,6 +6,7 @@ struct RootView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: Tab = .add
+    @AppStorage("ui.showTimetable") private var showTimetable = true
     @StateObject private var dayVM = DayViewModel()
 
     var body: some View {
@@ -22,9 +23,14 @@ struct RootView: View {
             DayView(vm: dayVM)
                 .tabItem { Label("日程", systemImage: "list.bullet.below.rectangle") }
                 .tag(Tab.day)
-            TimetableView()
-                .tabItem { Label("課表", systemImage: "calendar.day.timeline.left") }
-                .tag(Tab.timetable)
+            if showTimetable {
+                TimetableView()
+                    .tabItem { Label("課表", systemImage: "calendar.day.timeline.left") }
+                    .tag(Tab.timetable)
+            }
+        }
+        .onChange(of: showTimetable) { _, on in
+            if !on && tab == .timetable { tab = .add }
         }
         // 上課提醒：回到前景、課表有變動時，重排未來三週的通知
         .onChange(of: scenePhase) { _, phase in
