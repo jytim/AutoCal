@@ -19,11 +19,15 @@ struct LLMClient {
 
     /// 把一段中文（可含多個活動）解析成陣列。
     func parse(text: String, now: Date = Date()) async throws -> [ParsedItem] {
+        // 先把「10.」改寫成「10點」，解析後再核對幾點、日期，對不上就在卡片上警告
+        let cleaned = TimeSanity.normalize(text)
         let messages: [[String: Any]] = [
             ["role": "system", "content": Self.systemPrompt(now: now)],
-            ["role": "user", "content": text]
+            ["role": "user", "content": cleaned]
         ]
-        return try await send(messages: messages)
+        let parsed = try await send(messages: messages)
+        let items = TimeSanity.correctRelativeDay(parsed, text: cleaned, now: now)
+        return TimeSanity.annotate(items, text: cleaned, now: now)
     }
 
     /// 看截圖：把圖片（連同可選的補充文字）解析成陣列。
@@ -261,8 +265,24 @@ struct LLMClient {
         f.dateFormat = "yyyy-MM-dd (EEEE) HH:mm"
         let nowStr = f.string(from: now)
 
+        // 未來 14 天的日期對照表：星期幾、明天、後天都直接查表，不讓模型自己推算
+        var tpe = Calendar(identifier: .gregorian)
+        tpe.timeZone = TimeZone(identifier: "Asia/Taipei") ?? .current
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "zh_TW")
+        df.timeZone = tpe.timeZone
+        df.dateFormat = "yyyy-MM-dd EEEE"
+        let today0 = tpe.startOfDay(for: now)
+        // 注意：表裡不標「今天/明天/後天」。實測標了之後模型反而把「後天」算錯（46/60 vs 58/60）。
+        let table = (0..<14).compactMap { i -> String? in
+            guard let d = tpe.date(byAdding: .day, value: i, to: today0) else { return nil }
+            return df.string(from: d)
+        }.joined(separator: "\n        ")
+
         return """
         現在時間是 \(nowStr)，時區 Asia/Taipei。
+        接下來 14 天的日期對照（星期幾請直接查這張表，只會是今天或之後）：
+        \(table)
         你的任務：把使用者輸入的每個活動抽成 JSON 陣列。每個元素欄位：
         - type: "event"（有明確時間點的行程）或 "todo"（只有截止日或沒有時間的待辦）
         - title: 簡短標題（字串）
@@ -273,6 +293,14 @@ struct LLMClient {
 
         規則：
         - 相對日期（下週三、後天、月底）以上面的現在時間換算成實際日期。
+        - 時間一律以使用者寫的為準。使用者寫了數字就照用，絕對不要依活動類型（早餐、午餐、晚餐、開會…）自己猜時間：
+          「10」「10.」「10點」「10時」「10:00」都是十點整；「10點半」是十點三十分；「10點15」是十點十五分。
+        - 使用者沒寫上午或下午時，只用來判斷「上午還是下午」，不能改掉使用者寫的小時數：
+          早上、早晨、早餐 → 上午；下午 → 12 點以後的同一個數字（3 點 → 15:00）；
+          晚上、晚餐、夜 → 晚上（7 點 → 19:00）；都沒有線索就挑最近的未來時間。
+        - 只寫星期幾（例如「週五」）：用上面日期對照表裡最近的那一天；「下週五」是下一週的週五。
+        - 使用者只寫了日期、完全沒寫時間（例如「明天吃早餐」）：type 用 "todo"、allDay 用 true、
+          start 用當天 T00:00:00 加時區。不要編造時間，也不要把它當成午夜的行程。
         - 沒有指定結束時間的行程，end 用 null（app 會自動補一小時）。
         - 只輸出 JSON 陣列本身，不要有任何解釋文字、不要包 markdown code block。
         """
