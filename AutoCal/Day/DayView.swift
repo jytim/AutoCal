@@ -135,17 +135,29 @@ struct DayView: View {
                         .padding(.leading, timeColWidth).offset(y: y)
                 }
 
-                let lanes = TimetableViewModel.lanes(for: vm.timed)
-                ForEach(vm.timed) { e in
+                // 課堂固定放在右側窄欄，行程在左邊；這樣每天都有課也不會和行程混在一起
+                let classes = vm.timed.filter { $0.courseID != nil }
+                let others = vm.timed.filter { $0.courseID == nil }
+                let classW: CGFloat = classes.isEmpty ? 0 : max(contentWidth * 0.27, 78)
+                let eventsWidth = contentWidth - (classes.isEmpty ? 0 : classW + 6)
+                ForEach(classes) { c in
+                    classBlock(c, width: classW, hh: hh, startHour: r.start, totalH: CGFloat(hours) * hh)
+                        .offset(x: timeColWidth + 6 + eventsWidth + 6,
+                                y: y(of: c.start, hh: hh, startHour: r.start))
+                        .onTapGesture { selected = c }
+                }
+
+                let lanes = TimetableViewModel.lanes(for: others)
+                ForEach(others) { e in
                     let info = lanes[e.id] ?? (0, 1)
                     let stagger: CGFloat = info.count > 1 ? 10 : 0
-                    let width = contentWidth - stagger * CGFloat(info.count - 1)
+                    let width = eventsWidth - stagger * CGFloat(info.count - 1)
                     let isFront = front == e.id
                     // 預設最後一層在最上面；點一下底下的卡片可以拉到最前面
                     let onTop = info.count > 1 && (isFront || (front == nil && info.lane == info.count - 1))
                     // 疊在後面的卡片至少要露出一條標題的高度；前面那張往下推一點（下緣不動）
                     let baseY = y(of: e.start, hh: hh, startHour: r.start)
-                    let behindTop = vm.timed.compactMap { o -> CGFloat? in
+                    let behindTop = others.compactMap { o -> CGFloat? in
                         guard let oi = lanes[o.id], oi.lane == info.lane - 1, o.start <= e.start, o.end > e.start
                         else { return nil }
                         return y(of: o.start, hh: hh, startHour: r.start)
@@ -211,6 +223,29 @@ struct DayView: View {
         .background(e.color)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.7), lineWidth: 0.8))
+    }
+
+    /// 右側窄欄裡的課堂：縮短版，只放課名、時間、教室。
+    private func classBlock(_ e: TimetableEvent, width: CGFloat, hh: CGFloat,
+                            startHour: Int, totalH: CGFloat) -> some View {
+        let top = y(of: e.start, hh: hh, startHour: startHour)
+        let natural = CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
+        let height = min(max(natural, 22), max(totalH - top, 22))
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(e.title).font(.system(size: 11, weight: .semibold)).lineLimit(height > 52 ? 2 : 1)
+            if height > 34 {
+                Text(Self.hm.string(from: e.start)).font(.system(size: 10).monospacedDigit()).opacity(0.9)
+            }
+            if height > 52, let loc = e.location, !loc.isEmpty {
+                Text(loc).font(.system(size: 10)).lineLimit(1).opacity(0.9)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 5)
+        .padding(.top, 2)
+        .frame(width: width, height: height - 1, alignment: .topLeading)
+        .background(e.color.opacity(0.9))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     @ViewBuilder
