@@ -6,8 +6,6 @@ struct DayView: View {
     @ObservedObject var vm: DayViewModel
     /// 點頂端的日期時呼叫（外層切到「月」）。
     var onTapTitle: () -> Void = {}
-    /// 點日期列上方那排「一二三…」時進週檢視；nil 代表週檢視關閉。
-    var onOpenWeek: (() -> Void)? = nil
     @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
     @State private var courseToEdit: Course?
@@ -106,18 +104,12 @@ struct DayView: View {
     /// 日期列：一排七天，今天標色、選到的那天圓底、有事的日子下面一個小點。左右滑也能換日。
     private var weekStrip: some View {
         VStack(spacing: 3) {
-            // 點這排「一二三…」進週檢視
-            Button { onOpenWeek?() } label: {
-                HStack(spacing: 0) {
-                    ForEach(0..<7, id: \.self) { i in
-                        Text(Self.weekLabels[i]).font(.system(size: 11)).foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                    }
+            HStack(spacing: 0) {
+                ForEach(0..<7, id: \.self) { i in
+                    Text(Self.weekLabels[i]).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
                 }
-                .padding(.vertical, 5)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             HStack(spacing: 0) {
                 ForEach(Array(vm.weekDays.enumerated()), id: \.offset) { _, d in
                     let cal = Calendar.current

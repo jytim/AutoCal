@@ -13,8 +13,8 @@ struct CalendarContainerView: View {
     @StateObject private var weekVM = TimetableViewModel()
     @StateObject private var monthVM = MonthViewModel()
 
-    /// 切換列只有日、月。週檢視從日檢視的日期列上方那排「一二三…」點進去（設定裡可關閉）。
-    private let pickerModes: [Mode] = [.day, .month]
+    /// 切換列：日｜週｜月。設定裡關掉「顯示週檢視」時只剩日｜月。
+    private var pickerModes: [Mode] { showWeekView ? [.day, .week, .month] : [.day, .month] }
     private var mode: Mode {
         let m = Mode(rawValue: modeRaw) ?? .day
         return (m == .week && !showWeekView) ? .day : m
@@ -22,10 +22,8 @@ struct CalendarContainerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 在週檢視時兩格都不亮；點「日」或「月」就離開週
-            Picker("檢視", selection: Binding<Mode?>(get: { mode == .week ? nil : mode },
-                                                      set: { if let m = $0 { switchTo(m) } })) {
-                ForEach(pickerModes, id: \.self) { Text($0.title).tag(Optional($0)) }
+            Picker("檢視", selection: Binding(get: { mode }, set: { switchTo($0) })) {
+                ForEach(pickerModes, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
@@ -34,8 +32,7 @@ struct CalendarContainerView: View {
             Group {
             switch mode {
             case .day:
-                DayView(vm: dayVM, onTapTitle: { switchTo(.month) },
-                        onOpenWeek: showWeekView ? { switchTo(.week) } : nil)
+                DayView(vm: dayVM, onTapTitle: { switchTo(.month) })
             case .week:
                 TimetableView(onSelectDay: { day in switchTo(.day, anchor: day) }, vm: weekVM)
             case .month:
