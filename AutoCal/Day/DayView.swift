@@ -110,107 +110,193 @@ struct DayView: View {
 
     // MARK: - 時間軸
 
-    /// 顯示的時段：預設 8–22 點，有行程超出就往外擴，讓整天剛好塞進一頁、不用捲動。
-    private var hourRange: (start: Int, end: Int) {
+    /// 設定的基本顯示時段。比例（每小時多高）永遠用它算，所以每天看起來尺度一致。
+    private var baseRange: (start: Int, end: Int) {
+        let s = min(max(baseStart, 0), 23)
+        return (s, min(max(baseEnd, s + 1), 24))
+    }
+
+    /// 實際內容範圍：基本時段，加上當天超出的行程。超出的部分用捲動看，不壓縮比例。
+    private var fullRange: (start: Int, end: Int) {
         let cal = Calendar.current
-        var s = min(max(baseStart, 0), 23), e = min(max(baseEnd, s + 1), 24)
+        let base = baseRange
+        var s = base.start, e = base.end
+        let dayEnd = cal.startOfDay(for: vm.day).addingTimeInterval(86400 - 1)
         for ev in vm.timed {
             s = min(s, cal.component(.hour, from: ev.start))
-            let endH = cal.component(.hour, from: ev.end) + (cal.component(.minute, from: ev.end) > 0 ? 1 : 0)
-            e = max(e, ev.end > cal.startOfDay(for: vm.day).addingTimeInterval(86400 - 1) ? 24 : endH)
+            let endH = ev.end > dayEnd ? 24 : cal.component(.hour, from: ev.end) + (cal.component(.minute, from: ev.end) > 0 ? 1 : 0)
+            e = max(e, endH)
         }
         return (max(s, 0), min(max(e, s + 1), 24))
     }
 
+    private struct TimeTag: Identifiable {
+        let id = UUID(); let y: CGFloat; let text: String; let color: Color
+    }
+
+    /// 每個行程的開始、結束時間標在左邊的時間欄（對齊卡片的上緣與下緣）。
+    /// 兩個標籤太近就只留前面那個；時間欄上被它們蓋到的整點標籤會隱藏。
+    private func timeTags(hh: CGFloat, startHour: Int) -> [TimeTag] {
+        var raw: [TimeTag] = []
+        for e in vm.timed {
+            raw.append(TimeTag(y: y(of: e.start, hh: hh, startHour: startHour), text: Self.hm.string(from: e.start), color: e.color))
+            let endY = y(of: e.start, hh: hh, startHour: startHour) + CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
+            raw.append(TimeTag(y: endY, text: Self.hm.string(from: e.end), color: e.color))
+        }
+        var kept: [TimeTag] = []
+        for t in raw.sorted(by: { $0.y < $1.y }) {
+            if let last = kept.last, t.y - last.y < 11 { continue }
+            kept.append(t)
+        }
+        return kept
+    }
+
     private var timeline: some View {
         GeometryReader { geo in
-            let r = hourRange
-            let hours = r.end - r.start
-            // 底部留給浮動的分頁列，整天才不會被蓋住
-            let hh = min((geo.size.height - 84) / CGFloat(hours), 64)
+            let base = baseRange
+            let full = fullRange
+            let baseHours = base.end - base.start
+            let fullHours = full.end - full.start
+            // 底部留給浮動的分頁列；每小時高度只由基本時段決定
+            let hh = min((geo.size.height - 84) / CGFloat(baseHours), 64)
+            let totalH = CGFloat(fullHours) * hh
             let contentWidth = geo.size.width - timeColWidth - 12
-            ZStack(alignment: .topLeading) {
-                // 最下方的結束時間也標出來，才看得出整個範圍到幾點
-                Text(String(format: "%02d", r.end))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                    .frame(width: timeColWidth - 6, alignment: .trailing)
-                    .offset(y: CGFloat(hours) * hh - 7)
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
-                    .padding(.leading, timeColWidth).offset(y: CGFloat(hours) * hh)
-                ForEach(0..<hours, id: \.self) { i in
-                    let y = CGFloat(i) * hh
-                    Text(String(format: "%02d", r.start + i))
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                        .frame(width: timeColWidth - 6, alignment: .trailing)
-                        .offset(y: y - 7)
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
-                        .padding(.leading, timeColWidth).offset(y: y)
-                }
+            let tags = timeTags(hh: hh, startHour: full.start)
+            let earlyCount = vm.timed.filter { Calendar.current.component(.hour, from: $0.start) < base.start }.count
+            let lateCount = vm.timed.filter { ev in
+                let cal = Calendar.current
+                let dayEnd = cal.startOfDay(for: vm.day).addingTimeInterval(86400 - 1)
+                let endH = ev.end > dayEnd ? 24 : cal.component(.hour, from: ev.end) + (cal.component(.minute, from: ev.end) > 0 ? 1 : 0)
+                return endH > base.end
+            }.count
 
-                // 課堂固定放在右側窄欄，行程在左邊；這樣每天都有課也不會和行程混在一起
-                let classes = vm.timed.filter { $0.courseID != nil }
-                let others = vm.timed.filter { $0.courseID == nil }
-                let classW: CGFloat = classes.isEmpty ? 0 : max(contentWidth * 0.27, 78)
-                let eventsWidth = contentWidth - (classes.isEmpty ? 0 : classW + 6)
-                if !classes.isEmpty {
-                    // 課堂欄：淡淡的底色加小標，和左邊的行程分開但屬於同一張表
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.secondary.opacity(0.06))
-                        .frame(width: classW, height: CGFloat(hours) * hh)
-                        .offset(x: timeColWidth + 6 + eventsWidth + 6)
-                    Text("課")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: classW)
-                        .offset(x: timeColWidth + 6 + eventsWidth + 6, y: -13)
-                }
-                ForEach(classes) { c in
-                    classBlock(c, width: classW, hh: hh, startHour: r.start, totalH: CGFloat(hours) * hh)
-                        .offset(x: timeColWidth + 6 + eventsWidth + 6,
-                                y: y(of: c.start, hh: hh, startHour: r.start))
-                        .onTapGesture { selected = c }
-                }
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    ZStack(alignment: .topLeading) {
+                        // 捲動用的隱形錨點
+                        Color.clear.frame(width: 1, height: 1).id("top")
+                        Color.clear.frame(width: 1, height: 1).id("base").offset(y: CGFloat(base.start - full.start) * hh - 8)
+                        Color.clear.frame(width: 1, height: 1).id("bottom").offset(y: totalH)
 
-                let lanes = TimetableViewModel.lanes(for: others)
-                ForEach(others) { e in
-                    let info = lanes[e.id] ?? (0, 1)
-                    let stagger: CGFloat = info.count > 1 ? 10 : 0
-                    let width = eventsWidth - stagger * CGFloat(info.count - 1)
-                    let isFront = front == e.id
-                    // 預設最後一層在最上面；點一下底下的卡片可以拉到最前面
-                    let onTop = info.count > 1 && (isFront || (front == nil && info.lane == info.count - 1))
-                    // 疊在後面的卡片至少要露出一條標題的高度；前面那張往下推一點（下緣不動）
-                    let baseY = y(of: e.start, hh: hh, startHour: r.start)
-                    let behindTop = others.compactMap { o -> CGFloat? in
-                        guard let oi = lanes[o.id], oi.lane == info.lane - 1, o.start <= e.start, o.end > e.start
-                        else { return nil }
-                        return y(of: o.start, hh: hh, startHour: r.start)
-                    }.max()
-                    let shift = max(0, (behindTop.map { $0 + 15 } ?? 0) - baseY)
-                    block(e, width: width, back: info.count > 1 && !onTop, hh: hh, startHour: r.start,
-                          totalH: CGFloat(hours) * hh, shift: shift)
-                        .shadow(color: .black.opacity(info.count > 1 ? 0.25 : 0.08), radius: 1.5, y: 1)
-                        .offset(x: timeColWidth + 6 + stagger * CGFloat(info.lane),
-                                y: baseY + shift)
-                        .zIndex(isFront ? 100 : Double(info.lane))
-                        .onTapGesture {
-                            if info.count > 1 && !onTop {
-                                withAnimation(.easeInOut(duration: 0.2)) { front = e.id }
-                            } else {
-                                selected = e
+                        // 最下方的結束時間也標出來
+                        ForEach(0...fullHours, id: \.self) { i in
+                            let yy = CGFloat(i) * hh
+                            if !tags.contains(where: { abs($0.y - yy) < 9 }) {
+                                Text(String(format: "%02d", full.start + i))
+                                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                                    .frame(width: timeColWidth - 6, alignment: .trailing)
+                                    .offset(y: yy - 7)
                             }
+                            Rectangle()
+                                .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
+                                .padding(.leading, timeColWidth).offset(y: yy)
                         }
-                }
+                        ForEach(tags) { t in
+                            Text(t.text)
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(t.color)
+                                .frame(width: timeColWidth - 4, alignment: .trailing)
+                                .offset(y: t.y - 6)
+                        }
 
-                nowLine(width: geo.size.width - timeColWidth, hh: hh, startHour: r.start, totalH: CGFloat(hours) * hh)
+                        // 課堂固定放在右側窄欄，行程在左邊
+                        let classes = vm.timed.filter { $0.courseID != nil }
+                        let others = vm.timed.filter { $0.courseID == nil }
+                        let classW: CGFloat = classes.isEmpty ? 0 : max(contentWidth * 0.27, 78)
+                        let eventsWidth = contentWidth - (classes.isEmpty ? 0 : classW + 6)
+                        if !classes.isEmpty {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color.secondary.opacity(0.06))
+                                .frame(width: classW, height: totalH)
+                                .offset(x: timeColWidth + 6 + eventsWidth + 6)
+                            Text("課")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: classW)
+                                .offset(x: timeColWidth + 6 + eventsWidth + 6, y: -13)
+                        }
+                        ForEach(classes) { c in
+                            classBlock(c, width: classW, hh: hh, startHour: full.start, totalH: totalH)
+                                .offset(x: timeColWidth + 6 + eventsWidth + 6,
+                                        y: y(of: c.start, hh: hh, startHour: full.start))
+                                .onTapGesture { selected = c }
+                        }
+
+                        let lanes = TimetableViewModel.lanes(for: others)
+                        ForEach(others) { e in
+                            let info = lanes[e.id] ?? (0, 1)
+                            let stagger: CGFloat = info.count > 1 ? 10 : 0
+                            let width = eventsWidth - stagger * CGFloat(info.count - 1)
+                            let isFront = front == e.id
+                            // 預設最後一層在最上面；點一下底下的卡片可以拉到最前面
+                            let onTop = info.count > 1 && (isFront || (front == nil && info.lane == info.count - 1))
+                            // 疊在後面的卡片至少要露出一條標題的高度；前面那張往下推一點（下緣不動）
+                            let baseY = y(of: e.start, hh: hh, startHour: full.start)
+                            let behindTop = others.compactMap { o -> CGFloat? in
+                                guard let oi = lanes[o.id], oi.lane == info.lane - 1, o.start <= e.start, o.end > e.start
+                                else { return nil }
+                                return y(of: o.start, hh: hh, startHour: full.start)
+                            }.max()
+                            let shift = max(0, (behindTop.map { $0 + 15 } ?? 0) - baseY)
+                            block(e, width: width, back: info.count > 1 && !onTop, hh: hh,
+                                  startHour: full.start, totalH: totalH, shift: shift)
+                                .shadow(color: .black.opacity(info.count > 1 ? 0.2 : 0.06), radius: 1.5, y: 1)
+                                .offset(x: timeColWidth + 6 + stagger * CGFloat(info.lane), y: baseY + shift)
+                                .zIndex(isFront ? 100 : Double(info.lane))
+                                .onTapGesture {
+                                    if info.count > 1 && !onTop {
+                                        withAnimation(.easeInOut(duration: 0.2)) { front = e.id }
+                                    } else {
+                                        selected = e
+                                    }
+                                }
+                        }
+
+                        nowLine(width: geo.size.width - timeColWidth, hh: hh, startHour: full.start, totalH: totalH)
+                    }
+                    .frame(width: geo.size.width, height: totalH + 14, alignment: .topLeading)
+                    .padding(.top, 7)
+                }
+                .scrollDisabled(fullHours == baseHours)
+                // 超出基本時段的行程：比例不變，捲動才看得到，並在邊緣提示
+                .overlay(alignment: .top) {
+                    if earlyCount > 0 {
+                        edgePill("較早還有 \(earlyCount) 項", systemImage: "chevron.up") {
+                            withAnimation { proxy.scrollTo("top", anchor: .top) }
+                        }
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if lateCount > 0 {
+                        edgePill("較晚還有 \(lateCount) 項", systemImage: "chevron.down") {
+                            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                        }
+                        .padding(.bottom, 20)
+                    }
+                }
+                .onAppear { DispatchQueue.main.async { proxy.scrollTo("base", anchor: .top) } }
+                .onChange(of: vm.day) { _, _ in
+                    front = nil
+                    DispatchQueue.main.async { proxy.scrollTo("base", anchor: .top) }
+                }
+                .onChange(of: vm.timed.count) { _, _ in
+                    front = nil
+                    DispatchQueue.main.async { proxy.scrollTo("base", anchor: .top) }
+                }
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-            .padding(.top, 7)
         }
-        .onChange(of: vm.day) { _, _ in front = nil }
-        .onChange(of: vm.timed.count) { _, _ in front = nil }
+    }
+
+    private func edgePill(_ text: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(text, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
     }
 
     private func y(of date: Date, hh: CGFloat, startHour: Int) -> CGFloat {
@@ -219,88 +305,45 @@ struct DayView: View {
         return max(CGFloat(minutes - startHour * 60) / 60, 0) * hh
     }
 
-    /// 行程卡片：開始時間在上緣、結束時間在下緣，標題置中。
-    /// 太矮放不下時，改成一行「標題　開始–結束」。疊在後面的卡片只露出一條，也用一行。
+    /// 行程卡片：標題置中；開始、結束時間標在左邊的時間欄。疊在後面的卡片只露出一條，標題貼上緣。
     private func block(_ e: TimetableEvent, width: CGFloat, back: Bool,
                        hh: CGFloat, startHour: Int, totalH: CGFloat, shift: CGFloat) -> some View {
-        // 高度直接用「時間長度」算，這樣結束在午夜（24:00）的行程也不會算錯
         let top = y(of: e.start, hh: hh, startHour: startHour)
         let natural = CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
         let height = min(max(natural - shift, 22), max(totalH - top - shift, 22))
-        let range = "\(Self.hm.string(from: e.start))–\(Self.hm.string(from: e.end))"
-        let tall = height >= 48 && !back
-        return Group {
-            if tall {
-                VStack(spacing: 0) {
-                    Text(Self.hm.string(from: e.start))
-                        .font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Spacer(minLength: 0)
-                    VStack(spacing: 2) {
-                        Text(e.title).font(.system(size: 14, weight: .semibold))
-                            .multilineTextAlignment(.center).lineLimit(2)
-                        if height > 84, let loc = e.location, !loc.isEmpty {
-                            Label(loc, systemImage: "mappin.and.ellipse")
-                                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    Text(Self.hm.string(from: e.end))
-                        .font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .padding(.vertical, 3)
-            } else {
-                HStack(spacing: 6) {
-                    Text(e.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text(range).font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
-                }
-                .frame(maxHeight: .infinity, alignment: back ? .top : .center)
-                .padding(.top, back ? 1 : 0)
+        return VStack(spacing: 2) {
+            Text(e.title)
+                .font(.system(size: 14, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(height > 60 ? 2 : 1)
+            if !back, height > 70, let loc = e.location, !loc.isEmpty {
+                Label(loc, systemImage: "mappin.and.ellipse")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .foregroundStyle(.primary)
         .padding(.leading, 12).padding(.trailing, 6)
-        .frame(width: width, height: height - 1)
+        .frame(width: width, height: height - 1, alignment: back ? .top : .center)
+        .padding(.top, 0)
         .tintedCard(e.color, radius: 8)
     }
 
-    /// 右側窄欄裡的課堂：縮短版，只放課名、時間、教室。
+    /// 右側窄欄裡的課堂：和行程同樣式，只是窄一點。
     private func classBlock(_ e: TimetableEvent, width: CGFloat, hh: CGFloat,
                             startHour: Int, totalH: CGFloat) -> some View {
         let top = y(of: e.start, hh: hh, startHour: startHour)
         let natural = CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
         let height = min(max(natural, 22), max(totalH - top, 22))
-        let tall = height >= 48
-        return Group {
-            if tall {
-                VStack(spacing: 0) {
-                    Text(Self.hm.string(from: e.start))
-                        .font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Spacer(minLength: 0)
-                    VStack(spacing: 1) {
-                        Text(e.title).font(.system(size: 11, weight: .semibold))
-                            .multilineTextAlignment(.center).lineLimit(2)
-                        if height > 70, let loc = e.location, !loc.isEmpty {
-                            Text(loc).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    Text(Self.hm.string(from: e.end))
-                        .font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .padding(.vertical, 3)
-            } else {
-                Text(e.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        return VStack(spacing: 1) {
+            Text(e.title).font(.system(size: 12, weight: .semibold))
+                .multilineTextAlignment(.center).lineLimit(height > 52 ? 2 : 1)
+            if height > 70, let loc = e.location, !loc.isEmpty {
+                Text(loc).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .foregroundStyle(.primary)
         .padding(.leading, 9).padding(.trailing, 4)
-        .frame(width: width, height: height - 1)
+        .frame(width: width, height: height - 1, alignment: .center)
         .tintedCard(e.color, radius: 6, bar: 3)
     }
 
@@ -315,24 +358,5 @@ struct DayView: View {
                     .offset(x: timeColWidth - 3, y: yy - 3)
             }
         }
-    }
-}
-
-
-extension View {
-    /// 淡色底加左邊一條粗色條的卡片。底下先墊一層不透明的底色，疊在一起時後面的卡片不會透出來。
-    fileprivate func tintedCard(_ color: Color, radius: CGFloat, bar: CGFloat = 4) -> some View {
-        self
-            .background(
-                ZStack {
-                    Color(.systemBackground)
-                    color.opacity(0.17)
-                }
-            )
-            .overlay(alignment: .leading) {
-                Rectangle().fill(color).frame(width: bar)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: radius))
-            .overlay(RoundedRectangle(cornerRadius: radius).stroke(color.opacity(0.35), lineWidth: 0.6))
     }
 }

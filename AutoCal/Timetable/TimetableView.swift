@@ -179,7 +179,7 @@ struct TimetableView: View {
                     let info = lanes[e.id] ?? (0, 1)
                     let stagger: CGFloat = info.count > 1 ? 4 : 0
                     let cardWidth = colWidth - stagger * CGFloat(info.count - 1)
-                    eventBlock(e, width: cardWidth)
+                    eventBlock(e, width: cardWidth, back: info.count > 1 && info.lane < info.count - 1)
                         .shadow(color: .black.opacity(info.count > 1 ? 0.28 : 0.1),
                                 radius: 1.5, x: 0, y: 1)
                         .offset(x: x + stagger * CGFloat(info.lane),
@@ -202,48 +202,51 @@ struct TimetableView: View {
         return max(rel, 0) * hourHeight
     }
 
-    private func eventBlock(_ e: TimetableEvent, width: CGFloat) -> some View {
+    /// 課表卡片：和日程同樣式（淡色底、左色條）。標題置中；夠高才在上、下緣各放開始／結束時間。
+    private func eventBlock(_ e: TimetableEvent, width: CGFloat, back: Bool = false) -> some View {
         let top = yPosition(of: e.start)
         let bottom = min(yPosition(of: e.end), CGFloat(totalHours) * hourHeight)
         let height = max(bottom - top, 20)
-        return VStack(alignment: .leading, spacing: 1) {
-            Text(e.title)
-                .font(.system(size: 10, weight: .semibold))
-                .lineLimit(height > 44 ? 3 : 1)
-            if height > 30 {
-                Text("\(Self.hm.string(from: e.start))–\(Self.hm.string(from: e.end))")
-                    .font(.system(size: 8).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .opacity(0.92)
+        let tall = height >= 52 && !back
+        return Group {
+            if tall {
+                VStack(spacing: 0) {
+                    Text(Self.hm.string(from: e.start))
+                        .font(.system(size: 8).monospacedDigit()).foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Text(e.title)
+                        .font(.system(size: 11, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                    Spacer(minLength: 0)
+                    Text(Self.hm.string(from: e.end))
+                        .font(.system(size: 8).monospacedDigit()).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+            } else {
+                Text(e.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(back ? 1 : (height > 30 ? 2 : 1))
             }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 3)
-        .padding(.vertical, 2)
-        .frame(width: width - 2, height: height - 1, alignment: .topLeading)
-        .background(e.color)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.white.opacity(0.7), lineWidth: 0.8))
+        .foregroundStyle(.primary)
+        .padding(.leading, 6).padding(.trailing, 2)
+        .frame(width: width - 2, height: height - 1, alignment: back ? .top : .center)
+        .tintedCard(e.color, radius: 5, bar: 3)
         .padding(.leading, 1)
     }
 
+    /// 空堂：只在空檔頂端寫一行淡淡的起訖時間，不畫框也不上色，畫面才不會亂。
     private func freeBlock(_ slot: FreeSlot, colWidth: CGFloat) -> some View {
         let height = CGFloat(slot.duration / 3600) * hourHeight
-        return RoundedRectangle(cornerRadius: 5)
-            .strokeBorder(Color.green.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-            .background(Color.green.opacity(0.07).clipShape(RoundedRectangle(cornerRadius: 5)))
-            .overlay(alignment: .top) {
-                // 空堂不寫字，只寫起訖時間
-                Text("\(Self.hm.string(from: slot.start))–\(Self.hm.string(from: slot.end))")
-                    .font(.system(size: 8).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .foregroundStyle(Color.green)
-                    .padding(.top, 3)
-                    .padding(.horizontal, 2)
-            }
-            .frame(width: colWidth - 2, height: height - 1)
+        return Text("\(Self.hm.string(from: slot.start))–\(Self.hm.string(from: slot.end))")
+            .font(.system(size: 8).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .foregroundStyle(Color.secondary.opacity(0.7))
+            .padding(.top, 3)
+            .frame(width: colWidth - 2, height: max(height - 1, 0), alignment: .top)
             .padding(.leading, 1)
     }
 
