@@ -63,7 +63,7 @@ struct CourseDraft: Identifiable, Decodable {
     var mergeNote: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, hasPeriodAxis, xCenter
+        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, axisType, xCenter
     }
 
     init(from decoder: Decoder) throws {
@@ -76,7 +76,9 @@ struct CourseDraft: Identifiable, Decodable {
         end = Self.flexString(c, .end)
         location = Self.flexString(c, .location)
         hasHeader = (try? c.decodeIfPresent(Bool.self, forKey: .hasHeader)) ?? true
-        hasPeriodAxis = (try? c.decodeIfPresent(Bool.self, forKey: .hasPeriodAxis)) ?? true
+        // "period" 節次欄、"time" 只印時間、"none" 看不到那一欄
+        let axis = (try? c.decodeIfPresent(String.self, forKey: .axisType)) ?? "period"
+        hasPeriodAxis = axis.lowercased() != "none"
         if let x = try? c.decodeIfPresent(Double.self, forKey: .xCenter) { xCenter = x }
         else if let s = try? c.decodeIfPresent(String.self, forKey: .xCenter), let x = Double(s) { xCenter = x }
     }
