@@ -43,6 +43,16 @@ struct SettingsView: View {
                 ClassReminderSection()
 
                 Section {
+                    NavigationLink {
+                        ShareLogView()
+                    } label: {
+                        Label("分享診斷紀錄", systemImage: "stethoscope")
+                    }
+                } footer: {
+                    Text("從別的 App 分享給 AutoCal 閃退時，這裡會留下它最後做到哪一步，可以複製給開發者。")
+                }
+
+                Section {
                     SecureField("貼上 Brave 搜尋金鑰", text: $braveKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()

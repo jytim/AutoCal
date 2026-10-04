@@ -89,6 +89,7 @@ struct ShareRootView: View {
     }
 
     private func analyze() async {
+        ShareLog.write("開始辨識")
         do {
             let result: [ParsedItem]
             switch input {
@@ -99,12 +100,16 @@ struct ShareRootView: View {
             case .none:
                 message = "找不到可辨識的內容"; phase = .failed; return
             }
+            ShareLog.write("模型回傳 \(result.count) 筆")
             if result.isEmpty {
                 message = "沒有找到行程或待辦"; phase = .failed
             } else {
+                ShareLog.write("檢查衝突中")
                 items = await checker.annotate(result); phase = .review
+                ShareLog.write("顯示確認畫面")
             }
         } catch {
+            ShareLog.write("辨識失敗：\(error.localizedDescription)")
             message = error.localizedDescription; phase = .failed
         }
     }

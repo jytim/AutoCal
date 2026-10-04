@@ -15,8 +15,14 @@ class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        ShareLog.write("開始：分享擴充功能啟動")
         loadSharedInput { [weak self] input in
             guard let self else { return }
+            switch input {
+            case .image(let d, _): ShareLog.write("讀到圖片 \(d.count / 1024) KB，開始顯示畫面")
+            case .text(let t): ShareLog.write("讀到文字 \(t.count) 字，開始顯示畫面")
+            case .none: ShareLog.write("沒有讀到可用內容")
+            }
             let root = ShareRootView(input: input, onClose: { self.close() })
             let host = UIHostingController(rootView: root)
             self.addChild(host)
@@ -53,12 +59,15 @@ class ShareViewController: UIViewController {
     /// 而是用 ImageIO 直接從檔案縮圖：任何格式（HEIC、PNG、WebP、GIF…）都能處理，也不會爆記憶體。
     private func loadImage(from provider: NSItemProvider,
                            completion: @escaping (SharedInput) -> Void) {
+        let types = provider.registeredTypeIdentifiers.joined(separator: ",")
+        ShareLog.write("圖片來源格式：\(types)")
         let finish: (Data?) -> Void = { data in
             let result: SharedInput = data.map { .image($0, mime: "image/jpeg") } ?? .none
             DispatchQueue.main.async { completion(result) }
         }
         // 檔案在這個 handler 結束後就會被系統刪掉，所以要在裡面處理完
         provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
+            ShareLog.write("loadFileRepresentation：\(url == nil ? "失敗" : "成功")")
             if let url, let jpeg = Self.thumbnailJPEG(from: url) {
                 finish(jpeg); return
             }
