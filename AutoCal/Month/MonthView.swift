@@ -54,8 +54,8 @@ struct MonthView: View {
                     }
                 }
             }
-            .navigationTitle("月曆")
-            .navigationBarTitleDisplayMode(.inline)
+            // 分頁列已經寫了「月曆」，不再重複標題
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear { Task { await vm.load() } }
         }
     }

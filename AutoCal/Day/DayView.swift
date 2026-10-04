@@ -12,6 +12,8 @@ struct DayView: View {
     /// 日程預設顯示的時段（設定裡可改）；當天有行程超出時仍會自動往外擴。
     @AppStorage("ui.dayStartHour") private var baseStart = 8
     @AppStorage("ui.dayEndHour") private var baseEnd = 22
+    /// "agenda" = 議程清單（預設）、"timeline" = 時間軸格子
+    @AppStorage("ui.dayMode") private var mode = "agenda"
 
     private let timeColWidth: CGFloat = 40
 
@@ -32,7 +34,7 @@ struct DayView: View {
                         .padding(.horizontal).padding(.bottom, 4)
                 }
                 if !vm.allDay.isEmpty { allDayStrip }
-                timeline
+                if mode == "agenda" { agenda } else { timeline }
             }
             // 分頁列已經寫了「日程」，上面不再重複標題，把空間留給時間軸
             .toolbar(.hidden, for: .navigationBar)
@@ -76,6 +78,12 @@ struct DayView: View {
                 }
             }
             Spacer()
+            Button {
+                mode = (mode == "agenda") ? "timeline" : "agenda"
+            } label: {
+                Image(systemName: mode == "agenda" ? "calendar.day.timeline.left" : "list.bullet")
+            }
+            .padding(.trailing, 14)
             Button { vm.shift(by: 1) } label: { Image(systemName: "chevron.right") }
         }
         .padding(.horizontal)
@@ -106,6 +114,123 @@ struct DayView: View {
             .padding(.horizontal)
         }
         .padding(.bottom, 6)
+    }
+
+    // MARK: - 議程清單
+
+    private enum AgendaRow: Identifiable {
+        case item(TimetableEvent, overlaps: Bool)
+        case gap(Date, Date)
+        var id: String {
+            switch self {
+            case .item(let e, _): return e.id
+            case .gap(let s, _): return "gap-\(s.timeIntervalSince1970)"
+            }
+        }
+    }
+
+    /// 依時間排好的清單，項目之間空檔 30 分鐘以上就插一列「空檔」；和前面項目時間重疊的標警告。
+    private func agendaRows() -> [AgendaRow] {
+        var rows: [AgendaRow] = []
+        var cursor: Date?
+        for e in vm.timed.sorted(by: { $0.start < $1.start }) {
+            if let c = cursor {
+                if e.start >= c.addingTimeInterval(30 * 60) { rows.append(.gap(c, e.start)) }
+                rows.append(.item(e, overlaps: e.start < c))
+                cursor = max(c, e.end)
+            } else {
+                rows.append(.item(e, overlaps: false))
+                cursor = e.end
+            }
+        }
+        return rows
+    }
+
+    private static func durationText(_ seconds: TimeInterval) -> String {
+        let m = max(Int(seconds / 60), 0)
+        if m < 60 { return "\(m) 分鐘" }
+        return m % 60 == 0 ? "\(m / 60) 小時" : "\(m / 60) 小時 \(m % 60) 分"
+    }
+
+    private var agenda: some View {
+        TimelineView(.everyMinute) { ctx in
+            let now = ctx.date
+            let isToday = Calendar.current.isDateInToday(vm.day)
+            let rows = agendaRows()
+            let nextID = isToday
+                ? vm.timed.filter { $0.start > now }.min(by: { $0.start < $1.start })?.id : nil
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    if rows.isEmpty {
+                        Text("這天沒有行程")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .padding(.top, 60)
+                    }
+                    ForEach(rows) { row in
+                        switch row {
+                        case .gap(let s, let e):
+                            Text("空檔 \(Self.durationText(e.timeIntervalSince(s)))　\(Self.hm.string(from: s))–\(Self.hm.string(from: e))")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 2)
+                        case .item(let e, let overlaps):
+                            agendaItem(e, overlaps: overlaps, now: isToday ? now : nil, isNext: e.id == nextID)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 4)
+                .padding(.bottom, 100)
+            }
+        }
+    }
+
+    private func agendaItem(_ e: TimetableEvent, overlaps: Bool, now: Date?, isNext: Bool) -> some View {
+        let ongoing = now.map { e.start <= $0 && $0 < e.end } ?? false
+        let past = now.map { e.end <= $0 } ?? false
+        var status: String?
+        if ongoing, let n = now { status = "進行中・還剩 \(Self.durationText(e.end.timeIntervalSince(n)))" }
+        else if isNext, let n = now { status = "下一件・還有 \(Self.durationText(e.start.timeIntervalSince(n)))" }
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(Self.hm.string(from: e.start))
+                    .font(.system(size: 17, weight: .semibold).monospacedDigit())
+                Text(Self.hm.string(from: e.end))
+                    .font(.system(size: 13).monospacedDigit()).foregroundStyle(.secondary)
+            }
+            .frame(width: 52, alignment: .trailing)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(e.title).font(.system(size: 16, weight: .semibold)).lineLimit(2)
+                    if e.courseID != nil {
+                        Text("課").font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(e.color.opacity(0.25)).clipShape(Capsule())
+                    }
+                }
+                if let loc = e.location, !loc.isEmpty {
+                    Label(loc, systemImage: "mappin.and.ellipse")
+                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let status {
+                    Text(status).font(.system(size: 12, weight: .semibold)).foregroundStyle(e.color)
+                }
+                if overlaps {
+                    Label("和前面的項目時間重疊", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 10).padding(.leading, 10).padding(.trailing, 12)
+        .frame(maxWidth: .infinity)
+        .tintedCard(e.color, radius: 12)
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .stroke(e.color, lineWidth: (ongoing || isNext) ? 1.5 : 0))
+        .opacity(past ? 0.5 : 1)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onTapGesture { selected = e }
     }
 
     // MARK: - 時間軸

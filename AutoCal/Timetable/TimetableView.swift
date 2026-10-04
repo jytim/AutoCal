@@ -57,15 +57,10 @@ struct TimetableView: View {
                     }
                 }
             }
-            .navigationTitle("課表")
-            .navigationBarTitleDisplayMode(.inline)
+            // 分頁列已經寫了「課表」，不再重複標題；新增按鈕移到週切換列
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear { Task { await vm.load() } }
             .onReceive(courseStore.$courses) { _ in Task { await vm.load() } }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    CourseAddMenu(model: add)
-                }
-            }
             .courseAddFlow(add)
             .sheet(item: $selected) { event in
                 EventDetailSheet(
@@ -107,6 +102,8 @@ struct TimetableView: View {
             }
             Spacer()
             Button { vm.shiftWeek(by: 1) } label: { Image(systemName: "chevron.right") }
+            CourseAddMenu(model: add)
+                .padding(.leading, 14)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
