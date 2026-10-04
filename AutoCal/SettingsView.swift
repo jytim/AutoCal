@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("llm.model") private var llmModel = ""
     @AppStorage(EventColor.followKey) private var followCalendarColor = true
     @AppStorage("ui.dayStartHour") private var dayStart = 8
+    @AppStorage("ui.showWeekView") private var showWeekView = true
     @AppStorage("ui.dayEndHour") private var dayEnd = 22
 
     var body: some View {
@@ -32,6 +33,12 @@ struct SettingsView: View {
                     }
                 } footer: {
                     Text("新增、匯入、編輯或刪除每週重複的課堂。課堂會顯示在行事曆的日、週檢視，並用於衝突偵測、上課提醒與鎖定畫面桌布。")
+                }
+
+                Section {
+                    Toggle("顯示週檢視", isOn: $showWeekView)
+                } footer: {
+                    Text("週檢視可以並排看好幾天的時段與空堂，適合學生。不需要的話關掉，行事曆就只剩日和月。")
                 }
 
                 Section {

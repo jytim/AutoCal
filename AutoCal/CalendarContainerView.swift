@@ -8,16 +8,22 @@ struct CalendarContainerView: View {
     }
 
     @AppStorage("ui.calMode") private var modeRaw = Mode.day.rawValue
+    @AppStorage("ui.showWeekView") private var showWeekView = true
     @StateObject private var dayVM = DayViewModel()
     @StateObject private var weekVM = TimetableViewModel()
     @StateObject private var monthVM = MonthViewModel()
 
-    private var mode: Mode { Mode(rawValue: modeRaw) ?? .day }
+    /// 週檢視關掉時，切換列只剩日、月；原本停在週的話退回日。
+    private var availableModes: [Mode] { showWeekView ? Mode.allCases : [.day, .month] }
+    private var mode: Mode {
+        let m = Mode(rawValue: modeRaw) ?? .day
+        return availableModes.contains(m) ? m : .day
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Picker("檢視", selection: Binding(get: { mode }, set: { switchTo($0) })) {
-                ForEach(Mode.allCases, id: \.self) { Text($0.title).tag($0) }
+                ForEach(availableModes, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
