@@ -33,32 +33,16 @@ struct ShareRootView: View {
     private var content: some View {
         switch phase {
         case .loading:
-            VStack(spacing: 16) {
-                ProgressView()
-                Text(loadingText).foregroundStyle(.secondary)
-            }
+            FakeProgressView(label: loadingText)
         case .review:
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("確認要加入的項目").font(.headline)
-                    BatchTimeBar(items: $items) { Task { items = await checker.annotate(items) } }
-                    ForEach($items) { $item in ItemCard(item: $item) }
-                    if hasUndecidedConflicts {
-                        Label("請先為每個衝突選擇處理方式，才能加入", systemImage: "hand.raised.fill")
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                    Button {
-                        Task { await save() }
-                    } label: {
-                        Label("加入行事曆 / 提醒事項", systemImage: "calendar.badge.plus")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(hasUndecidedConflicts)
+                ReviewSection(items: $items, isBusy: false) {
+                    Task { items = await checker.annotate(items) }
                 }
                 .padding()
+            }
+            .safeAreaInset(edge: .bottom) {
+                ReviewAddBar(items: items) { Task { await save() } }
             }
         case .done:
             VStack(spacing: 16) {

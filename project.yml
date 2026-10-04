@@ -70,6 +70,7 @@ targets:
       - path: AutoCal/Models
       - path: AutoCal/Services
       - path: AutoCal/ItemCard.swift
+      - path: AutoCal/Shared
     info:
       path: AutoCalShare/Info.plist
       properties:

@@ -97,36 +97,9 @@ struct ContentView: View {
                     }
 
                     if !vm.items.isEmpty {
-                        HStack {
-                            Text("確認要加入的項目")
-                                .font(.headline)
-                            Spacer()
-                            Button {
-                                Task { await vm.recheckConflicts() }
-                            } label: {
-                                Label("重新檢查衝突", systemImage: "arrow.triangle.2.circlepath")
-                                    .font(.footnote)
-                            }
-                            .disabled(vm.isParsing)
+                        ReviewSection(items: $vm.items, isBusy: vm.isParsing) {
+                            Task { await vm.recheckConflicts() }
                         }
-                        BatchTimeBar(items: $vm.items) { Task { await vm.recheckConflicts() } }
-                        ForEach($vm.items) { $item in
-                            ItemCard(item: $item)
-                        }
-                        if vm.hasUndecidedConflicts {
-                            Label("請先為每個衝突選擇處理方式，才能加入", systemImage: "hand.raised.fill")
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-                        Button {
-                            Task { await vm.save() }
-                        } label: {
-                            Label("加入行事曆 / 提醒事項", systemImage: "calendar.badge.plus")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(vm.hasUndecidedConflicts)
                     }
                 }
                 .padding()
@@ -135,6 +108,11 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
             }
             .navigationTitle("AutoCal")
+            .safeAreaInset(edge: .bottom) {
+                if !vm.items.isEmpty {
+                    ReviewAddBar(items: vm.items) { Task { await vm.save() } }
+                }
+            }
             // 點空白處或往下滑都收起鍵盤
             .onTapGesture { inputFocused = false }
             .scrollDismissesKeyboard(.interactively)
@@ -165,7 +143,7 @@ struct ContentView: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($inputFocused)
             if vm.isParsing {
-                ProgressView().frame(maxWidth: .infinity).controlSize(.large)
+                FakeProgressView(label: vm.items.isEmpty ? "正在辨識…" : "正在重新檢查…")
             } else {
                 Button {
                     Task { await vm.parse() }
