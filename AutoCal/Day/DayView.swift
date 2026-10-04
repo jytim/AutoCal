@@ -151,6 +151,18 @@ struct DayView: View {
                 let others = vm.timed.filter { $0.courseID == nil }
                 let classW: CGFloat = classes.isEmpty ? 0 : max(contentWidth * 0.27, 78)
                 let eventsWidth = contentWidth - (classes.isEmpty ? 0 : classW + 6)
+                if !classes.isEmpty {
+                    // 課堂欄：淡淡的底色加小標，和左邊的行程分開但屬於同一張表
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.06))
+                        .frame(width: classW, height: CGFloat(hours) * hh)
+                        .offset(x: timeColWidth + 6 + eventsWidth + 6)
+                    Text("課")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: classW)
+                        .offset(x: timeColWidth + 6 + eventsWidth + 6, y: -13)
+                }
                 ForEach(classes) { c in
                     classBlock(c, width: classW, hh: hh, startHour: r.start, totalH: CGFloat(hours) * hh)
                         .offset(x: timeColWidth + 6 + eventsWidth + 6,
@@ -225,15 +237,13 @@ struct DayView: View {
                     .font(.system(size: 11)).lineLimit(1).opacity(0.9)
             }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 8)
+        .foregroundStyle(.primary)
+        .padding(.leading, 12).padding(.trailing, 6)
         // 疊在一起時，後面那張只露出一小條，上下留白要小，標題才不會被前面那張蓋住
         .padding(.top, (stacked || compact) ? 1 : 5)
         .padding(.bottom, compact ? 0 : 5)
         .frame(width: width, height: height - 1, alignment: .topLeading)
-        .background(e.color)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.7), lineWidth: 0.8))
+        .tintedCard(e.color, radius: 8)
     }
 
     /// 右側窄欄裡的課堂：縮短版，只放課名、時間、教室。
@@ -251,12 +261,11 @@ struct DayView: View {
                 Text(loc).font(.system(size: 10)).lineLimit(1).opacity(0.9)
             }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 5)
+        .foregroundStyle(.primary)
+        .padding(.leading, 9).padding(.trailing, 4)
         .padding(.top, 2)
         .frame(width: width, height: height - 1, alignment: .topLeading)
-        .background(e.color.opacity(0.9))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .tintedCard(e.color, radius: 6, bar: 3)
     }
 
     @ViewBuilder
@@ -270,5 +279,24 @@ struct DayView: View {
                     .offset(x: timeColWidth - 3, y: yy - 3)
             }
         }
+    }
+}
+
+
+extension View {
+    /// 淡色底加左邊一條粗色條的卡片。底下先墊一層不透明的底色，疊在一起時後面的卡片不會透出來。
+    fileprivate func tintedCard(_ color: Color, radius: CGFloat, bar: CGFloat = 4) -> some View {
+        self
+            .background(
+                ZStack {
+                    Color(.systemBackground)
+                    color.opacity(0.17)
+                }
+            )
+            .overlay(alignment: .leading) {
+                Rectangle().fill(color).frame(width: bar)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: radius))
+            .overlay(RoundedRectangle(cornerRadius: radius).stroke(color.opacity(0.35), lineWidth: 0.6))
     }
 }
