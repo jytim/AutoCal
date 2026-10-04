@@ -177,14 +177,14 @@ struct MonthView: View {
             Text(e.title)
                 .font(.system(size: 10))
                 .lineLimit(1)
-                .padding(.horizontal, 3)
+                .foregroundStyle(.primary)
+                .padding(.leading, 5).padding(.trailing, 3)
                 .padding(.vertical, 1.5)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(e.color.opacity(0.2))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .tintedCard(e.color, radius: 4, bar: 2)
         case .timed(let e):
             HStack(spacing: 3) {
-                Circle().fill(e.color).frame(width: 5, height: 5)
+                RoundedRectangle(cornerRadius: 1).fill(e.color).frame(width: 2.5, height: 10)
                 Text(e.title).font(.system(size: 10)).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -196,12 +196,11 @@ struct MonthView: View {
             Image(systemName: symbol).font(.system(size: 6))
             Text(e.title).font(.system(size: 9, weight: .semibold)).lineLimit(1)
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 2)
+        .foregroundStyle(.primary)
+        .padding(.leading, 5).padding(.trailing, 2)
         .padding(.vertical, 1.5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(e.color)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .tintedCard(e.color, radius: 4, bar: 2)
     }
 
     /// 跨多天行程在整段期間的底部細色條（不占版面，其他行程不會被擠掉）。

@@ -24,7 +24,10 @@ struct RootView: View {
                 .tabItem { Label("日程", systemImage: "list.bullet.below.rectangle") }
                 .tag(Tab.day)
             if showTimetable {
-                TimetableView()
+                TimetableView(onSelectDay: { day in
+                    dayVM.select(day)      // 課表點星期標頭 → 跳到那天的日程
+                    tab = .day
+                })
                     .tabItem { Label("課表", systemImage: "calendar.day.timeline.left") }
                     .tag(Tab.timetable)
             }

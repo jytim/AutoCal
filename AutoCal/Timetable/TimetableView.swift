@@ -4,6 +4,8 @@ import UIKit
 
 /// 課表式的一週時間塊檢視：事件是方塊，週一到週五的空檔標成「空堂」。
 struct TimetableView: View {
+    /// 點星期標頭，跳到那一天的日程。
+    var onSelectDay: (Date) -> Void = { _ in }
     @StateObject private var vm = TimetableViewModel()
     @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
@@ -126,6 +128,8 @@ struct TimetableView: View {
                 .frame(width: colWidth, height: headerHeight - 8)
                 .background(isToday ? Color.accentColor : Color.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+                .onTapGesture { onSelectDay(day) }
             }
         }
         .frame(height: headerHeight)
