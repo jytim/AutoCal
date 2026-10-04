@@ -12,8 +12,8 @@ struct DayView: View {
     /// 日程預設顯示的時段（設定裡可改）；當天有行程超出時仍會自動往外擴。
     @AppStorage("ui.dayStartHour") private var baseStart = 8
     @AppStorage("ui.dayEndHour") private var baseEnd = 22
-    /// "agenda" = 議程清單（預設）、"timeline" = 時間軸格子
-    @AppStorage("ui.dayMode") private var mode = "agenda"
+    /// "timeline" = 時間軸格子（預設，單日維度）、"agenda" = 議程清單
+    @AppStorage("ui.dayMode") private var mode = "timeline"
 
     private let timeColWidth: CGFloat = 40
 
