@@ -23,14 +23,31 @@ struct CalendarContainerView: View {
             .padding(.horizontal)
             .padding(.top, 6)
 
+            Group {
             switch mode {
             case .day:
-                DayView(vm: dayVM)
+                DayView(vm: dayVM, onTapTitle: { switchTo(.month) })
             case .week:
                 TimetableView(onSelectDay: { day in switchTo(.day, anchor: day) }, vm: weekVM)
             case .month:
                 MonthView(vm: monthVM, onSelectDay: { day in switchTo(.day, anchor: day) })
             }
+            }
+            // 左右滑動換日／週／月（像 Apple 行事曆）：只在明顯橫向、距離夠長時才算，不干擾上下捲動與點擊
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30).onEnded { v in
+                    let dx = v.translation.width, dy = v.translation.height
+                    guard abs(dx) > 70, abs(dx) > abs(dy) * 1.8 else { return }
+                    step(dx < 0 ? 1 : -1)
+                })
+        }
+    }
+
+    private func step(_ n: Int) {
+        switch mode {
+        case .day: dayVM.shift(by: n)
+        case .week: weekVM.shiftWeek(by: n)
+        case .month: monthVM.shiftMonth(by: n)
         }
     }
 

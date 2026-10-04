@@ -20,6 +20,9 @@ final class DayViewModel: ObservableObject {
     @Published var timed: [TimetableEvent] = []
     @Published var allDay: [AllDayItem] = []
     @Published var accessDenied = false
+    /// 這一天所在那一週（週一開頭）的七天，以及其中有行程／課堂的日子（週日期列的小點）。
+    @Published var weekDays: [Date] = []
+    @Published var markedDays: Set<Date> = []
 
     /// 時間軸顯示範圍（小時）。
     static let startHour = 6
@@ -48,8 +51,28 @@ final class DayViewModel: ObservableObject {
         var timedOut: [TimetableEvent] = []
         var allDayOut: [AllDayItem] = []
 
+        // 週日期列：這一週哪幾天有事
+        var wcal = calendar
+        wcal.firstWeekday = 2
+        let weekStart = wcal.dateInterval(of: .weekOfYear, for: dayStart)?.start ?? dayStart
+        let weekDaysOut = (0..<7).compactMap { wcal.date(byAdding: .day, value: $0, to: weekStart) }
+        var marked: Set<Date> = []
+
         if (try? await store.requestFullAccessToEvents()) == true {
             accessDenied = false
+            if let weekEnd = weekDaysOut.last.flatMap({ calendar.date(byAdding: .day, value: 1, to: $0) }) {
+                let wpred = store.predicateForEvents(withStart: weekStart, end: weekEnd, calendars: nil)
+                for e in store.events(matching: wpred) {
+                    guard let s = e.startDate, let en = e.endDate else { continue }
+                    var d = calendar.startOfDay(for: s)
+                    let last = calendar.startOfDay(for: en > s ? en.addingTimeInterval(-1) : en)
+                    while d <= last {
+                        marked.insert(d)
+                        guard let n = calendar.date(byAdding: .day, value: 1, to: d) else { break }
+                        d = n
+                    }
+                }
+            }
             let pred = store.predicateForEvents(withStart: dayStart, end: dayEnd, calendars: nil)
             for e in store.events(matching: pred) {
                 guard let s = e.startDate, let en = e.endDate else { continue }
@@ -91,8 +114,12 @@ final class DayViewModel: ObservableObject {
                 courseID: o.course.id))
         }
 
+        for d in weekDaysOut where !CourseStore.shared.occurrences(on: d).isEmpty { marked.insert(d) }
+
         // 連按切換日期時，慢回來的舊結果不能蓋掉新的
         guard calendar.startOfDay(for: day) == dayStart else { return }
+        weekDays = weekDaysOut
+        markedDays = marked
         timed = timedOut.sorted { $0.start < $1.start }
         allDay = allDayOut.sorted { $0.title < $1.title }
     }

@@ -4,6 +4,8 @@ import SwiftUI
 /// 月曆點某一天會跳到這裡。
 struct DayView: View {
     @ObservedObject var vm: DayViewModel
+    /// 點頂端的日期時呼叫（外層切到「月」）。
+    var onTapTitle: () -> Void = {}
     @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
     @State private var courseToEdit: Course?
@@ -68,27 +70,62 @@ struct DayView: View {
     // MARK: - 日期列
 
     private var dayBar: some View {
-        HStack {
-            Button { vm.shift(by: -1) } label: { Image(systemName: "chevron.left") }
-            Spacer()
-            VStack(spacing: 2) {
-                Text(Self.title.string(from: vm.day)).font(.subheadline.bold())
-                if !Calendar.current.isDateInToday(vm.day) {
-                    Button("回到今天") { vm.select(Date()) }.font(.caption)
+        VStack(spacing: 4) {
+            HStack {
+                // 左：回到今天（今天時留白，版面不跳動）
+                Button("今天") { vm.select(Date()) }
+                    .font(.subheadline)
+                    .opacity(Calendar.current.isDateInToday(vm.day) ? 0 : 1)
+                    .disabled(Calendar.current.isDateInToday(vm.day))
+                    .frame(width: 44, alignment: .leading)
+                Spacer()
+                // 點日期可以往上一層，看整個月
+                Button { onTapTitle() } label: {
+                    Text(Self.title.string(from: vm.day)).font(.subheadline.bold())
+                        .foregroundStyle(.primary)
                 }
+                .buttonStyle(.plain)
+                Spacer()
+                Button {
+                    mode = (mode == "agenda") ? "timeline" : "agenda"
+                } label: {
+                    Image(systemName: mode == "agenda" ? "calendar.day.timeline.left" : "list.bullet")
+                }
+                .frame(width: 44, alignment: .trailing)
             }
-            Spacer()
-            Button {
-                mode = (mode == "agenda") ? "timeline" : "agenda"
-            } label: {
-                Image(systemName: mode == "agenda" ? "calendar.day.timeline.left" : "list.bullet")
-            }
-            .padding(.trailing, 14)
-            Button { vm.shift(by: 1) } label: { Image(systemName: "chevron.right") }
+            weekStrip
         }
         .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
     }
+
+    /// 日期列：一排七天，今天標色、選到的那天圓底、有事的日子下面一個小點。左右滑也能換日。
+    private var weekStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(vm.weekDays.enumerated()), id: \.offset) { i, d in
+                let cal = Calendar.current
+                let selected = cal.isDate(d, inSameDayAs: vm.day)
+                let today = cal.isDateInToday(d)
+                VStack(spacing: 3) {
+                    Text(Self.weekLabels[i]).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("\(cal.component(.day, from: d))")
+                        .font(.system(size: 16, weight: selected || today ? .bold : .regular))
+                        .foregroundStyle(selected ? Color.white : (today ? Color.accentColor : Color.primary))
+                        .frame(width: 32, height: 32)
+                        .background(selected ? Color.accentColor : Color.clear)
+                        .clipShape(Circle())
+                    Circle()
+                        .fill(vm.markedDays.contains(cal.startOfDay(for: d)) ? Color.secondary.opacity(0.7) : Color.clear)
+                        .frame(width: 4, height: 4)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { vm.select(d) }
+            }
+        }
+    }
+
+    private static let weekLabels = ["一", "二", "三", "四", "五", "六", "日"]
 
     // MARK: - 整天項目
 
