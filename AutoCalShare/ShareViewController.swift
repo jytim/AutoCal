@@ -1,6 +1,7 @@
 import UIKit
 import SwiftUI
 import UniformTypeIdentifiers
+import ImageIO
 
 /// 分享進來的內容：一張圖片、或一段文字。
 enum SharedInput {
@@ -48,27 +49,32 @@ class ShareViewController: UIViewController {
         completion(.none)
     }
 
+    /// 分享擴充功能的記憶體上限很低（約 120MB），所以不把整張圖解碼成 UIImage 再縮小，
+    /// 而是用 ImageIO 直接從檔案縮圖：任何格式（HEIC、PNG、WebP、GIF…）都能處理，也不會爆記憶體。
     private func loadImage(from provider: NSItemProvider,
                            completion: @escaping (SharedInput) -> Void) {
-        provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { obj, _ in
-            var data: Data?
-            var mime = "image/jpeg"
-            switch obj {
-            case let url as URL:
-                data = try? Data(contentsOf: url)
-                if url.pathExtension.lowercased() == "png" { mime = "image/png" }
-            case let image as UIImage:
-                data = image.jpegData(compressionQuality: 0.85)
-            case let raw as Data:
-                data = raw
-            default:
-                break
-            }
-            if let d = data, let shrunk = Self.downscaleIfNeeded(d) {
-                data = shrunk; mime = "image/jpeg"
-            }
-            let result: SharedInput = data.map { .image($0, mime: mime) } ?? .none
+        let finish: (Data?) -> Void = { data in
+            let result: SharedInput = data.map { .image($0, mime: "image/jpeg") } ?? .none
             DispatchQueue.main.async { completion(result) }
+        }
+        // 檔案在這個 handler 結束後就會被系統刪掉，所以要在裡面處理完
+        provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, _ in
+            if let url, let jpeg = Self.thumbnailJPEG(from: url) {
+                finish(jpeg); return
+            }
+            // 備援：有些來源只給資料或 UIImage
+            provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { obj, _ in
+                switch obj {
+                case let image as UIImage:
+                    finish(Self.jpeg(from: image))
+                case let raw as Data:
+                    finish(Self.thumbnailJPEG(from: raw))
+                case let url as URL:
+                    finish(Self.thumbnailJPEG(from: url))
+                default:
+                    finish(nil)
+                }
+            }
         }
     }
 
@@ -88,16 +94,36 @@ class ShareViewController: UIViewController {
         }
     }
 
-    /// 長邊超過 1600px 就縮小，加快上傳與辨識。
-    private static func downscaleIfNeeded(_ data: Data, maxSide: CGFloat = 1600) -> Data? {
-        guard let img = UIImage(data: data) else { return nil }
-        let longSide = max(img.size.width, img.size.height)
-        guard longSide > maxSide else { return nil }
-        let scale = maxSide / longSide
-        let newSize = CGSize(width: img.size.width * scale, height: img.size.height * scale)
-        let renderer = UIGraphicsImageRenderer(size: newSize)
-        let resized = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: newSize)) }
-        return resized.jpegData(compressionQuality: 0.85)
+    /// 長邊縮到 1600px 以內再轉 JPEG，加快上傳與辨識。
+    private static let maxSide = 1600
+
+    private static func thumbnailJPEG(from url: URL) -> Data? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return thumbnailJPEG(from: src)
+    }
+
+    private static func thumbnailJPEG(from data: Data) -> Data? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return thumbnailJPEG(from: src)
+    }
+
+    private static func thumbnailJPEG(from src: CGImageSource) -> Data? {
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,   // 套用 EXIF 方向
+            kCGImageSourceThumbnailMaxPixelSize: maxSide
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg).jpegData(compressionQuality: 0.85)
+    }
+
+    private static func jpeg(from image: UIImage) -> Data? {
+        let long = max(image.size.width, image.size.height)
+        guard long > CGFloat(maxSide) else { return image.jpegData(compressionQuality: 0.85) }
+        let scale = CGFloat(maxSide) / long
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        return UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+            .jpegData(compressionQuality: 0.85)
     }
 
     func close() {
