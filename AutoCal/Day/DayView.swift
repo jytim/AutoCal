@@ -6,6 +6,8 @@ struct DayView: View {
     @ObservedObject var vm: DayViewModel
     /// 點頂端的日期時呼叫（外層切到「月」）。
     var onTapTitle: () -> Void = {}
+    /// 點日期列上方那排「一二三…」時進週檢視；nil 代表週檢視關閉。
+    var onOpenWeek: (() -> Void)? = nil
     @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
     @State private var courseToEdit: Course?
@@ -101,26 +103,39 @@ struct DayView: View {
 
     /// 日期列：一排七天，今天標色、選到的那天圓底、有事的日子下面一個小點。左右滑也能換日。
     private var weekStrip: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(vm.weekDays.enumerated()), id: \.offset) { i, d in
-                let cal = Calendar.current
-                let selected = cal.isDate(d, inSameDayAs: vm.day)
-                let today = cal.isDateInToday(d)
-                VStack(spacing: 3) {
-                    Text(Self.weekLabels[i]).font(.system(size: 11)).foregroundStyle(.secondary)
-                    Text("\(cal.component(.day, from: d))")
-                        .font(.system(size: 16, weight: selected || today ? .bold : .regular))
-                        .foregroundStyle(selected ? Color.white : (today ? Color.accentColor : Color.primary))
-                        .frame(width: 32, height: 32)
-                        .background(selected ? Color.accentColor : Color.clear)
-                        .clipShape(Circle())
-                    Circle()
-                        .fill(vm.markedDays.contains(cal.startOfDay(for: d)) ? Color.secondary.opacity(0.7) : Color.clear)
-                        .frame(width: 4, height: 4)
+        VStack(spacing: 3) {
+            // 點這排「一二三…」進週檢視
+            Button { onOpenWeek?() } label: {
+                HStack(spacing: 0) {
+                    ForEach(0..<7, id: \.self) { i in
+                        Text(Self.weekLabels[i]).font(.system(size: 11)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
-                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
                 .contentShape(Rectangle())
-                .onTapGesture { vm.select(d) }
+            }
+            .buttonStyle(.plain)
+            HStack(spacing: 0) {
+                ForEach(Array(vm.weekDays.enumerated()), id: \.offset) { _, d in
+                    let cal = Calendar.current
+                    let selected = cal.isDate(d, inSameDayAs: vm.day)
+                    let today = cal.isDateInToday(d)
+                    VStack(spacing: 3) {
+                        Text("\(cal.component(.day, from: d))")
+                            .font(.system(size: 16, weight: selected || today ? .bold : .regular))
+                            .foregroundStyle(selected ? Color.white : (today ? Color.accentColor : Color.primary))
+                            .frame(width: 32, height: 32)
+                            .background(selected ? Color.accentColor : Color.clear)
+                            .clipShape(Circle())
+                        Circle()
+                            .fill(vm.markedDays.contains(cal.startOfDay(for: d)) ? Color.secondary.opacity(0.7) : Color.clear)
+                            .frame(width: 4, height: 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { vm.select(d) }
+                }
             }
         }
     }
@@ -296,14 +311,15 @@ struct DayView: View {
         let id = UUID(); let y: CGFloat; let text: String; let color: Color
     }
 
-    /// 每個行程的開始、結束時間標在左邊的時間欄（對齊卡片的上緣與下緣）。
-    /// 兩個標籤太近就只留前面那個；時間欄上被它們蓋到的整點標籤會隱藏。
-    private func timeTags(hh: CGFloat, startHour: Int) -> [TimeTag] {
+    /// 每個行程的開始、結束時間標在中間時間軸欄（對齊卡片的上緣與下緣）。
+    /// 行程與課堂各自一組，同一組裡兩個標籤太近就只留前面那個。
+    private func timeTags(for items: [TimetableEvent], hh: CGFloat, startHour: Int) -> [TimeTag] {
         var raw: [TimeTag] = []
-        for e in vm.timed {
-            raw.append(TimeTag(y: y(of: e.start, hh: hh, startHour: startHour), text: Self.hm.string(from: e.start), color: e.color))
-            let endY = y(of: e.start, hh: hh, startHour: startHour) + CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
-            raw.append(TimeTag(y: endY, text: Self.hm.string(from: e.end), color: e.color))
+        for e in items {
+            let top = y(of: e.start, hh: hh, startHour: startHour)
+            raw.append(TimeTag(y: top, text: Self.hm.string(from: e.start), color: e.color))
+            raw.append(TimeTag(y: top + CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh,
+                               text: Self.hm.string(from: e.end), color: e.color))
         }
         var kept: [TimeTag] = []
         for t in raw.sorted(by: { $0.y < $1.y }) {
@@ -321,47 +337,67 @@ struct DayView: View {
             // 整天一頁看完：把「基本時段加上超出的行程」剛好塞進畫面；底部留給浮動的分頁列
             let hh = min((geo.size.height - 84) / CGFloat(fullHours), 64)
             let totalH = CGFloat(fullHours) * hh
-            let contentWidth = geo.size.width - timeColWidth - 12
-            let tags = timeTags(hh: hh, startHour: full.start)
+            // 三欄：行程｜時間軸｜課堂。有任何課堂資料時才保留課堂欄（每天位置一致、滑動時不跳動）；
+            // 沒有課堂的人就是「時間軸｜行程」兩欄。
+            let m: CGFloat = 8, gap: CGFloat = 4
+            let hasLane = !courseStore.courses.isEmpty
+            let total = geo.size.width - 2 * m
+            let axisW: CGFloat = hasLane ? 76 : 40
+            let classW: CGFloat = hasLane ? max(total * 0.24, 76) : 0
+            let eventsW = hasLane ? total - axisW - classW - 2 * gap : total - axisW - gap
+            let eventsX = hasLane ? m : m + axisW + gap
+            let axisX = hasLane ? m + eventsW + gap : m
+            let classX = axisX + axisW + gap
+            let classes = vm.timed.filter { $0.courseID != nil }
+            let others = vm.timed.filter { $0.courseID == nil }
+            let eventTags = timeTags(for: others, hh: hh, startHour: full.start)
+            let classTags = timeTags(for: classes, hh: hh, startHour: full.start)
 
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     ZStack(alignment: .topLeading) {
-                        // 整點只留淡淡的橫線，不標數字；左邊只標行程的開始與結束時間
+                        // 整點只留淡淡的橫線，不標數字；中間時間軸只標行程與課堂的開始、結束時間
                         ForEach(0...fullHours, id: \.self) { i in
-                            let yy = CGFloat(i) * hh
                             Rectangle()
-                                .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
-                                .padding(.leading, timeColWidth).offset(y: yy)
+                                .fill(Color.secondary.opacity(0.18))
+                                .frame(width: total, height: 0.5)
+                                .offset(x: m, y: CGFloat(i) * hh)
                         }
-                        ForEach(tags) { t in
+                        // 時間標籤：行程的靠時間軸左半（貼著左邊的行程），課堂的靠右半（貼著右邊的課堂）
+                        ForEach(eventTags) { t in
                             Text(t.text)
                                 .font(.system(size: 10, weight: .semibold).monospacedDigit())
                                 .foregroundStyle(t.color)
-                                .frame(width: timeColWidth - 4, alignment: .trailing)
-                                .offset(y: t.y - 6)
+                                .padding(.horizontal, 2)
+                                .background(Color(.systemBackground))
+                                .frame(width: hasLane ? axisW / 2 - 2 : axisW - 4, alignment: .trailing)
+                                .offset(x: axisX, y: t.y - 6)
+                        }
+                        ForEach(classTags) { t in
+                            Text(t.text)
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(t.color)
+                                .padding(.horizontal, 2)
+                                .background(Color(.systemBackground))
+                                .frame(width: axisW / 2 - 2, alignment: .leading)
+                                .offset(x: axisX + axisW / 2 + 2, y: t.y - 6)
                         }
 
-                        // 課堂固定放在右側窄欄，行程在左邊
-                        let classes = vm.timed.filter { $0.courseID != nil }
-                        let others = vm.timed.filter { $0.courseID == nil }
-                        let classW: CGFloat = classes.isEmpty ? 0 : max(contentWidth * 0.27, 78)
-                        let eventsWidth = contentWidth - (classes.isEmpty ? 0 : classW + 6)
-                        if !classes.isEmpty {
+                        if hasLane {
+                            // 課堂欄：淡淡的底色加小標
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Color.secondary.opacity(0.06))
                                 .frame(width: classW, height: totalH)
-                                .offset(x: timeColWidth + 6 + eventsWidth + 6)
+                                .offset(x: classX)
                             Text("課")
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .frame(width: classW)
-                                .offset(x: timeColWidth + 6 + eventsWidth + 6, y: -13)
+                                .offset(x: classX, y: -13)
                         }
                         ForEach(classes) { c in
                             classBlock(c, width: classW, hh: hh, startHour: full.start, totalH: totalH)
-                                .offset(x: timeColWidth + 6 + eventsWidth + 6,
-                                        y: y(of: c.start, hh: hh, startHour: full.start))
+                                .offset(x: classX, y: y(of: c.start, hh: hh, startHour: full.start))
                                 .onTapGesture { selected = c }
                         }
 
@@ -369,7 +405,7 @@ struct DayView: View {
                         ForEach(others) { e in
                             let info = lanes[e.id] ?? (0, 1)
                             let stagger: CGFloat = info.count > 1 ? 10 : 0
-                            let width = eventsWidth - stagger * CGFloat(info.count - 1)
+                            let width = eventsW - stagger * CGFloat(info.count - 1)
                             let isFront = front == e.id
                             // 預設最後一層在最上面；點一下底下的卡片可以拉到最前面
                             let onTop = info.count > 1 && (isFront || (front == nil && info.lane == info.count - 1))
@@ -384,7 +420,7 @@ struct DayView: View {
                             block(e, width: width, back: info.count > 1 && !onTop, hh: hh,
                                   startHour: full.start, totalH: totalH, shift: shift)
                                 .shadow(color: .black.opacity(info.count > 1 ? 0.2 : 0.06), radius: 1.5, y: 1)
-                                .offset(x: timeColWidth + 6 + stagger * CGFloat(info.lane), y: baseY + shift)
+                                .offset(x: eventsX + stagger * CGFloat(info.lane), y: baseY + shift)
                                 .zIndex(isFront ? 100 : Double(info.lane))
                                 .onTapGesture {
                                     if info.count > 1 && !onTop {
@@ -395,7 +431,7 @@ struct DayView: View {
                                 }
                         }
 
-                        nowLine(width: geo.size.width - timeColWidth, hh: hh, startHour: full.start, totalH: totalH)
+                        nowLine(x: m, width: total, hh: hh, startHour: full.start, totalH: totalH)
                     }
                     .frame(width: geo.size.width, height: totalH + 14, alignment: .topLeading)
                     .padding(.top, 16)
@@ -456,14 +492,14 @@ struct DayView: View {
     }
 
     @ViewBuilder
-    private func nowLine(width: CGFloat, hh: CGFloat, startHour: Int, totalH: CGFloat) -> some View {
+    private func nowLine(x: CGFloat, width: CGFloat, hh: CGFloat, startHour: Int, totalH: CGFloat) -> some View {
         if Calendar.current.isDateInToday(vm.day) {
             let yy = y(of: Date(), hh: hh, startHour: startHour)
             if yy > 0 && yy < totalH {
                 Rectangle().fill(Color.red).frame(width: width, height: 1)
-                    .offset(x: timeColWidth, y: yy)
+                    .offset(x: x, y: yy)
                 Circle().fill(Color.red).frame(width: 7, height: 7)
-                    .offset(x: timeColWidth - 3, y: yy - 3)
+                    .offset(x: x - 3, y: yy - 3)
             }
         }
     }
