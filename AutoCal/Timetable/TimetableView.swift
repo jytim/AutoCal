@@ -6,7 +6,7 @@ import UIKit
 struct TimetableView: View {
     /// 點星期標頭，跳到那一天的日程。
     var onSelectDay: (Date) -> Void = { _ in }
-    @StateObject private var vm = TimetableViewModel()
+    @ObservedObject var vm: TimetableViewModel
     @ObservedObject private var courseStore = CourseStore.shared
     @State private var selected: TimetableEvent?
     @StateObject private var add = CourseAddModel()
@@ -29,6 +29,12 @@ struct TimetableView: View {
         f.dateFormat = "E"
         return f
     }()
+    private static let hmShort: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_TW")
+        f.dateFormat = "H:mm"
+        return f
+    }()
     private static let hm: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "zh_TW")
@@ -48,7 +54,7 @@ struct TimetableView: View {
                         .padding(.bottom, 4)
                 }
                 GeometryReader { geo in
-                    let colWidth = (geo.size.width - timeColWidth) / 5
+                    let colWidth = (geo.size.width - timeColWidth) / CGFloat(max(vm.days.count, 1))
                     VStack(spacing: 0) {
                         dayHeader(colWidth: colWidth)
                         ScrollView {
@@ -104,8 +110,20 @@ struct TimetableView: View {
             }
             Spacer()
             Button { vm.shiftWeek(by: 1) } label: { Image(systemName: "chevron.right") }
+            Button {
+                withAnimation { vm.showWeekend.toggle() }
+            } label: {
+                Text(vm.showWeekend ? "七天" : (vm.weekendCount > 0 ? "五天 +\(vm.weekendCount)" : "五天"))
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(vm.showWeekend || vm.weekendCount == 0
+                                ? Color.secondary.opacity(0.15) : Color.orange.opacity(0.25))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 12)
             CourseAddMenu(model: add)
-                .padding(.leading, 14)
+                .padding(.leading, 10)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
@@ -241,8 +259,10 @@ struct TimetableView: View {
     /// 空堂：只在空檔頂端寫一行淡淡的起訖時間，不畫框也不上色，畫面才不會亂。
     private func freeBlock(_ slot: FreeSlot, colWidth: CGFloat) -> some View {
         let height = CGFloat(slot.duration / 3600) * hourHeight
-        return Text("\(Self.hm.string(from: slot.start))–\(Self.hm.string(from: slot.end))")
-            .font(.system(size: 8).monospacedDigit())
+        // 七天時每欄很窄：用 8:00–9:10（不補零）免得相鄰兩欄的文字黏在一起
+        let f = vm.showWeekend ? Self.hmShort : Self.hm
+        return Text("\(f.string(from: slot.start))–\(f.string(from: slot.end))")
+            .font(.system(size: vm.showWeekend ? 7 : 8).monospacedDigit())
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             .foregroundStyle(Color.secondary.opacity(0.7))
@@ -259,7 +279,7 @@ struct TimetableView: View {
             if y > 0 && y < CGFloat(totalHours) * hourHeight {
                 Rectangle()
                     .fill(Color.red)
-                    .frame(width: colWidth * 5, height: 1)
+                    .frame(width: colWidth * CGFloat(vm.days.count), height: 1)
                     .offset(x: timeColWidth + 0, y: y)
                 Circle()
                     .fill(Color.red)

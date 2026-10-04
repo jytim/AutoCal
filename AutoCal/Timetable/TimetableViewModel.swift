@@ -29,6 +29,10 @@ final class TimetableViewModel: ObservableObject {
     @Published var weekStart: Date
     @Published var events: [TimetableEvent] = []
     @Published var accessDenied = false
+    /// 週檢視要不要顯示週六、週日（記在手機上，預設只顯示週一到週五）。
+    @Published var showWeekend: Bool = UserDefaults.standard.bool(forKey: "ui.weekShowWeekend") {
+        didSet { UserDefaults.standard.set(showWeekend, forKey: "ui.weekShowWeekend") }
+    }
 
     /// 課表顯示的時間範圍（小時）。
     static let startHour = 7
@@ -59,9 +63,25 @@ final class TimetableViewModel: ObservableObject {
         return monday
     }
 
-    /// 本週的七天（週一～週日）。
+    /// 畫面上顯示的天：週一到週五，或打開週末後的週一到週日。
     var days: [Date] {
-        (0..<5).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+        (0..<(showWeekend ? 7 : 5)).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+    }
+
+    /// 這一週的七天（資料一律讀滿七天，才知道週末有沒有事）。
+    private var allDays: [Date] {
+        (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: weekStart) }
+    }
+
+    /// 週六、週日的行程與課堂數量（週末被隱藏時，用來提示「週末還有 N 項」）。
+    var weekendCount: Int {
+        allDays.suffix(2).reduce(0) { $0 + events(on: $1).count }
+    }
+
+    /// 切到包含指定日期的那一週（週一開頭）。
+    func goTo(date: Date) {
+        weekStart = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? calendar.startOfDay(for: date)
+        Task { await load() }
     }
 
     func shiftWeek(by weeks: Int) {
@@ -98,7 +118,7 @@ final class TimetableViewModel: ObservableObject {
         }
 
         // 課堂來自 AutoCal 自己的課表，不在 Apple 行事曆裡
-        let fromCourses = days.flatMap { CourseStore.shared.occurrences(on: $0) }.map { o in
+        let fromCourses = allDays.flatMap { CourseStore.shared.occurrences(on: $0) }.map { o in
             TimetableEvent(id: "course-" + o.id,
                            title: o.course.name,
                            start: o.start,

@@ -73,6 +73,12 @@ final class MonthViewModel: ObservableObject {
         Task { await load() }
     }
 
+    /// 切到包含指定日期的那個月。
+    func goTo(date: Date) {
+        monthStart = cal.date(from: cal.dateComponents([.year, .month], from: date)) ?? monthStart
+        Task { await load() }
+    }
+
     func goToThisMonth() {
         monthStart = cal.date(from: cal.dateComponents([.year, .month], from: Date())) ?? monthStart
         Task { await load() }

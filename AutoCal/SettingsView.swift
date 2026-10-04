@@ -8,7 +8,6 @@ struct SettingsView: View {
     @AppStorage("llm.baseURL") private var llmBaseURL = ""
     @AppStorage("llm.model") private var llmModel = ""
     @AppStorage(EventColor.followKey) private var followCalendarColor = true
-    @AppStorage("ui.showTimetable") private var showTimetable = true
     @AppStorage("ui.dayStartHour") private var dayStart = 8
     @AppStorage("ui.dayEndHour") private var dayEnd = 22
 
@@ -26,14 +25,13 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("顯示課表分頁", isOn: $showTimetable)
                     NavigationLink {
                         CourseManageView()
                     } label: {
                         Label("課堂管理", systemImage: "books.vertical")
                     }
                 } footer: {
-                    Text("不是學生可以關掉課表分頁。課堂資料仍然保留，衝突偵測、上課提醒、鎖定畫面桌布都照常使用；要新增或修改課堂就從「課堂管理」進去。")
+                    Text("新增、匯入、編輯或刪除每週重複的課堂。課堂會顯示在行事曆的日、週檢視，並用於衝突偵測、上課提醒與鎖定畫面桌布。")
                 }
 
                 Section {

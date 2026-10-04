@@ -4,7 +4,7 @@ import SwiftUI
 /// 只在第一天和最後一天放標籤，中間幾天在格子底部畫一條細色條並標「第N天」，
 /// 這樣當天的其他行程不會被擠成「+N個」。
 struct MonthView: View {
-    @StateObject private var vm = MonthViewModel()
+    @ObservedObject var vm: MonthViewModel
     /// 點某一天時呼叫（由外層切到「日程」分頁並顯示那一天）。
     var onSelectDay: (Date) -> Void = { _ in }
 
