@@ -96,11 +96,22 @@ struct ItemCard: View {
                     }
                 }
             } else {
+                // 待辦只寫了日期時，起點會是當天 00:00，只代表「這一天」，不是午夜 12 點。
+                // 預設只顯示日期；要指定幾點截止再打開開關。
+                let hasTime = Self.hasClockTime(item.start ?? item.end)
                 DatePicker("截止",
                            selection: Binding(
                             get: { item.start ?? item.end ?? Date() },
                             set: { item.start = $0; item.timeWarning = nil }),
-                           displayedComponents: [.date, .hourAndMinute])
+                           displayedComponents: hasTime ? [.date, .hourAndMinute] : [.date])
+                Toggle("指定截止時間", isOn: Binding(
+                    get: { hasTime },
+                    set: { on in
+                        let cal = Calendar.current
+                        let day = cal.startOfDay(for: item.start ?? item.end ?? Date())
+                        item.start = on ? cal.date(bySettingHour: 9, minute: 0, second: 0, of: day) : day
+                    }))
+                    .font(.subheadline)
             }
 
             HStack {
@@ -131,6 +142,13 @@ struct ItemCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .opacity(item.isSelected && item.resolution != .skip ? 1 : 0.5)
         .task { calendars = CalendarChoice.load() }
+    }
+
+    /// 時間不是午夜 00:00 才算「有指定幾點」。
+    static func hasClockTime(_ d: Date?) -> Bool {
+        guard let d else { return false }
+        let c = Calendar.current
+        return c.component(.hour, from: d) != 0 || c.component(.minute, from: d) != 0
     }
 
     private static let hm: DateFormatter = {

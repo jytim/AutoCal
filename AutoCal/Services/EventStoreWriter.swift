@@ -80,8 +80,10 @@ final class EventStoreWriter {
         reminder.title = item.title
         reminder.calendar = store.defaultCalendarForNewReminders()
         if let due = item.start ?? item.end {
-            reminder.dueDateComponents = Calendar.current.dateComponents(
-                [.year, .month, .day, .hour, .minute], from: due)
+            // 只有日期（午夜 00:00）就不設時分，提醒事項裡才不會顯示成 12:00 AM
+            let units: Set<Calendar.Component> = ItemCard.hasClockTime(due)
+                ? [.year, .month, .day, .hour, .minute] : [.year, .month, .day]
+            reminder.dueDateComponents = Calendar.current.dateComponents(units, from: due)
         }
         try store.save(reminder, commit: true)
     }
