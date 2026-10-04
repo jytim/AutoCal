@@ -23,6 +23,7 @@ struct CourseImportView: View {
     }
 
     private var selectedCount: Int { drafts.filter(\.isSelected).count }
+    private var guessedCount: Int { drafts.filter { $0.isSelected && $0.weekday != 0 && $0.weekdayGuessed }.count }
     private var hasUnknownWeekday: Bool { drafts.contains { $0.isSelected && ($0.weekday == 0 || $0.weekdayGuessed) } }
 
     private var headerText: String {
@@ -49,6 +50,18 @@ struct CourseImportView: View {
                     Text("學期範圍")
                 } footer: {
                     Text("每門課會在這段期間內每週重複。課堂只存在 AutoCal 的課表，不會加進行事曆。")
+                }
+
+                if guessedCount > 0 {
+                    Section {
+                        Button {
+                            for i in drafts.indices where drafts[i].weekday != 0 { drafts[i].weekdayGuessed = false }
+                        } label: {
+                            Label("對照截圖後，全部確認（\(guessedCount)）", systemImage: "checkmark.seal")
+                        }
+                    } footer: {
+                        Text("\(guessedCount) 堂課的截圖沒有星期標題，星期是用方塊的左右位置，對照有標題的截圖推算出來的。請看一眼截圖，沒問題就按一次全部確認；不對的可以個別改星期。")
+                    }
                 }
 
                 Section {

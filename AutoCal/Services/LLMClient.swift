@@ -95,28 +95,27 @@ struct LLMClient {
     // MARK: - 課表截圖
 
     /// 看一張課表截圖，抽出每一門課（一門課一週上多次要分成多筆）。
-    func parseCourses(imageData: Data, mimeType: String = "image/jpeg",
-                      known: [CourseDraft] = []) async throws -> [CourseDraft] {
+    func parseCourses(imageData: Data, mimeType: String = "image/jpeg") async throws -> [CourseDraft] {
+        // 實測（兩張課表截圖，一張有星期標題、一張沒有）：
+        // 節次讓模型讀、時間由程式換算；沒有星期標題時，不讓模型自己猜星期，
+        // 而是請它回報每個方塊的水平位置（xCenter），由程式用「有標題那張」學到的欄位位置推算。
         let system = """
         你是課表辨識助理。使用者會給你一張課表截圖，請找出每一門課，輸出 JSON 陣列。
         每個元素的欄位：
-        - name: 課程名稱（字串，去掉課號與老師名）
-        - weekday: 星期，1=週一、2=週二、…、7=週日。請看課程方塊在「哪一欄」，對齊上方哪個星期標題
-        - hasHeader: 布林。這張截圖裡你「真的看得到星期標題列」（週一、週二…）就填 true，看不到填 false
-        - startPeriod: 這門課占用的第一個節次（字串，例如 "3" 或 "A"）
+        - name: 課程名稱（字串，去掉課號與老師名，括號如「(上)」保留）
+        - xCenter: 這個課程方塊水平中心點的位置，用整張截圖寬度的百分比表示（最左邊是 0，最右邊是 100，例如 45.5）
+        - weekday: 星期，1=週一、2=週二、…、7=週日。只有當這張截圖「真的看得到星期標題列」時才填，看不到填 0
+        - hasHeader: 布林。這張截圖看得到星期標題列（週一、週二、一、二…）填 true，否則填 false
+        - startPeriod: 這門課占用的第一個節次（字串，例如 "3"、"10"、"A"）
         - endPeriod: 這門課占用的最後一個節次（字串）
-        - start / end: 只有當截圖上直接印了上課時間（"HH:mm"）才填；沒有就用 null
         - location: 教室；沒有就用 null
 
         規則：
-        - 節次請仔細對照課程方塊的「上緣」和「下緣」各自對齊左邊哪一個節次數字。不要自己把節次換成時間。
-        - 同一門課一週上好幾次（不同星期或不同時段），要拆成好幾筆。
-        - 連續的節次合併成一筆（例如第 6、7 節 → startPeriod "6"，endPeriod "7"）。
-        - 截圖可能只是整張課表的一部分（上下或左右被切掉）。課程方塊被切到邊緣時，只輸出你真的看得到的節次範圍，不要猜被切掉的部分。
-        - 如果這張截圖看不到星期標題：
-          · 若下面「已知的課」裡有同一門課，直接沿用它的星期（一門課在另一天也有的話，用方塊左右位置判斷是哪一欄）。
-          · 否則不要亂猜，weekday 填 0（表示星期不明，由使用者自己選）。
-        - 只根據截圖上真的看得到的課，不要編造。看不清楚的課就略過。
+        - 節次標籤只可能是：0、1～10、A、B、C、D。最左邊那欄每一格寫著「開始時間、節次、結束時間」，請以中間那個大字的節次標籤為準。
+        - 逐一檢查每個課程方塊：看方塊「上緣」對齊哪一列、「下緣」對齊哪一列。上緣所在列是 startPeriod，下緣所在列是 endPeriod。方塊只佔一列，兩者就相同。
+        - 同一門課一週上好幾次（不同欄、不同時段），每一個方塊都要各自輸出一筆，絕對不要重複輸出同一個方塊，也不要漏掉。
+        - 截圖可能只是整張課表的一部分（上下被切掉）。課程方塊被切到邊緣時，只輸出你真的看得到的節次範圍。
+        - 只根據截圖上真的看得到的課，不要編造。
         只輸出 JSON 陣列本身，不要任何其他文字。
         """
         let dataURI = "data:\(mimeType);base64,\(imageData.base64EncodedString())"
@@ -124,14 +123,8 @@ struct LLMClient {
             ["type": "text", "text": "這是我的課表截圖，請把每一門課抽出來。"],
             ["type": "image_url", "image_url": ["url": dataURI]]
         ]
-        var knownNote = ""
-        if !known.isEmpty {
-            knownNote = "\n\n已知的課（來自同一份課表的其他截圖，可當作線索）：\n" + known.map {
-                "- \($0.name)：週\(Course.weekdayNames[max(0, min(6, $0.weekday - 1))])"
-            }.joined(separator: "\n")
-        }
         let text = try await sendRaw(messages: [
-            ["role": "system", "content": system + knownNote],
+            ["role": "system", "content": system],
             ["role": "user", "content": userContent]
         ], maxTokens: 2000)
 

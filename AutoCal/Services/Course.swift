@@ -51,25 +51,29 @@ struct CourseDraft: Identifiable, Decodable {
     var isSelected = true
     /// 這張截圖看得到星期標題嗎。看不到的話，星期是靠推測的，要請使用者確認。
     var hasHeader = true
+    /// 課程方塊水平中心點，佔截圖寬度的百分比（0–100）。沒有星期標題時，用它推算星期。
+    var xCenter: Double?
     /// 星期是推測的（來自沒有標題的截圖），確認畫面會標出來。
     var weekdayGuessed = false
     /// 合併時留下的提醒（例如合併後時段變長，可能其實是不同天的兩堂課）。
     var mergeNote: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader
+        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, xCenter
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
-        weekday = try c.decode(Int.self, forKey: .weekday)
+        weekday = (try? c.decode(Int.self, forKey: .weekday)) ?? 0
         startPeriod = Self.flexString(c, .startPeriod)
         endPeriod = Self.flexString(c, .endPeriod)
         start = Self.flexString(c, .start)
         end = Self.flexString(c, .end)
         location = Self.flexString(c, .location)
         hasHeader = (try? c.decodeIfPresent(Bool.self, forKey: .hasHeader)) ?? true
+        if let x = try? c.decodeIfPresent(Double.self, forKey: .xCenter) { xCenter = x }
+        else if let s = try? c.decodeIfPresent(String.self, forKey: .xCenter), let x = Double(s) { xCenter = x }
     }
 
     /// 模型有時把節次回成數字、有時回成字串，兩種都收。
@@ -121,6 +125,40 @@ struct CourseDraft: Identifiable, Decodable {
 }
 
 extension CourseDraft {
+    /// 沒有星期標題的截圖：用「有標題的截圖」裡各星期方塊的水平位置，做線性推算每個星期欄的位置，
+    /// 再把沒有標題那張的每個方塊指派給最近的欄。要在所有截圖都辨識完之後才做（不受截圖順序影響）。
+    /// 至少要看到兩個不同的星期才推得出欄距；推不出來就維持「星期不明」，由使用者自己選。
+    /// 指派出來的星期一律標成「推測」，確認畫面會請使用者確認。
+    static func assigningWeekdays(_ drafts: [CourseDraft]) -> [CourseDraft] {
+        let pts = drafts.compactMap { d -> (w: Double, x: Double)? in
+            guard d.hasHeader, (1...7).contains(d.weekday), let x = d.xCenter else { return nil }
+            return (Double(d.weekday), x)
+        }
+        guard Set(pts.map(\.w)).count >= 2 else { return drafts }
+        let n = Double(pts.count)
+        let mw = pts.map(\.w).reduce(0, +) / n, mx = pts.map(\.x).reduce(0, +) / n
+        let variance = pts.map { ($0.w - mw) * ($0.w - mw) }.reduce(0, +)
+        guard variance > 0 else { return drafts }
+        let slope = pts.map { ($0.w - mw) * ($0.x - mx) }.reduce(0, +) / variance
+        guard slope > 5 else { return drafts }          // 兩欄之間至少隔 5% 寬度才合理
+        let intercept = mx - slope * mw
+        // 每個星期欄的預測中心（只留在圖片範圍內的）
+        let centers = (1...7).compactMap { w -> (w: Int, x: Double)? in
+            let x = intercept + slope * Double(w)
+            return (x > 0 && x < 100) ? (w, x) : nil
+        }
+        guard !centers.isEmpty else { return drafts }
+        return drafts.map { d in
+            var d = d
+            if d.weekday == 0, let x = d.xCenter,
+               let best = centers.min(by: { abs($0.x - x) < abs($1.x - x) }) {
+                d.weekday = best.w
+                d.weekdayGuessed = true
+            }
+            return d
+        }
+    }
+
     /// 合併多張截圖辨識出的課：同一門課、同一天，時段重疊或緊接（相隔 20 分鐘內，
     /// 例如連續兩節）就當成同一堂，取聯集；這樣重複拍到的、或被截圖邊界切成兩半的課都會接起來。
     static func merged(_ drafts: [CourseDraft]) -> [CourseDraft] {
@@ -146,9 +184,13 @@ extension CourseDraft {
                 if ds < ms { m.startPeriod = d.startPeriod; m.start = d.start }
                 if de > me { m.endPeriod = d.endPeriod; m.end = d.end }
                 if m.location == nil { m.location = d.location }
-                // 只要有一邊的星期是推測的，合併後就仍然是推測的——
-                // 不能讓「可信」的那一邊把「猜的」洗白，否則不同天的兩堂課會被無聲併成一堂。
-                if m.weekdayGuessed || d.weekdayGuessed {
+                // 一邊是有標題的截圖（可信）、另一邊是推測的：
+                // 兩邊同一天、時段也沒有變長 → 推測被可信的那邊印證了，不用再請使用者確認。
+                // 時段變長就仍然當成推測的——不能讓「可信」的那一邊把「猜的」洗白，
+                // 否則不同天的兩堂課會被無聲併成一堂。
+                if m.weekdayGuessed != d.weekdayGuessed && !grew {
+                    m.weekdayGuessed = false
+                } else if m.weekdayGuessed || d.weekdayGuessed {
                     m.weekdayGuessed = true
                     if grew {
                         m.mergeNote = "和一張沒有星期標題的截圖合併後，時段變長了。如果其實是不同天的兩堂課，請取消勾選這筆，再用「+」手動新增。"

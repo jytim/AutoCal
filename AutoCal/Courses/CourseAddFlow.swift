@@ -36,14 +36,13 @@ final class CourseAddModel: ObservableObject {
                 guard let data = try await item.loadTransferable(type: Data.self) else {
                     failures.append("第 \(i + 1) 張：讀不到圖片"); continue
                 }
-                all += try await LLMClient().parseCourses(imageData: Self.downscaled(data),
-                                                            known: all.filter { $0.weekday != 0 })
+                all += try await LLMClient().parseCourses(imageData: Self.downscaled(data))
             } catch {
                 failures.append("第 \(i + 1) 張：\(error.localizedDescription)")
             }
         }
 
-        let merged = CourseDraft.merged(all)
+        let merged = CourseDraft.merged(CourseDraft.assigningWeekdays(all))
         if merged.isEmpty {
             importError = failures.isEmpty ? "截圖裡沒有辨識到課堂" : failures.joined(separator: "\n")
         } else {
