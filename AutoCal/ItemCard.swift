@@ -218,6 +218,7 @@ struct BatchTimeBar: View {
     var onApplied: () -> Void = {}
 
     @State private var start = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var expanded = false
     @State private var end = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date()) ?? Date()
 
     private var targets: [Int] {
@@ -232,24 +233,30 @@ struct BatchTimeBar: View {
 
     var body: some View {
         if targets.count >= 2 {
-            VStack(alignment: .leading, spacing: 8) {
+            // 預設收起，展開才會看到時間和套用按鈕，避免被誤認成已經設定好的時間
+            DisclosureGroup(isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    DatePicker("開始", selection: $start, displayedComponents: .hourAndMinute)
+                    DatePicker("結束", selection: $end, displayedComponents: .hourAndMinute)
+                    if !isValid {
+                        Text("結束時間要晚於開始時間").font(.caption).foregroundStyle(.red)
+                    }
+                    Button {
+                        apply()
+                        withAnimation { expanded = false }
+                    } label: {
+                        Text("套用到已勾選的 \(targets.count) 項")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!isValid)
+                    Text("各項目保留自己的日期，只統一開始和結束時間；不想套用的先取消勾選。套用後可以再逐張修改。")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.top, 6)
+            } label: {
                 Label("全部設為同一時段", systemImage: "clock.arrow.2.circlepath")
                     .font(.subheadline.bold())
-                DatePicker("開始", selection: $start, displayedComponents: .hourAndMinute)
-                DatePicker("結束", selection: $end, displayedComponents: .hourAndMinute)
-                if !isValid {
-                    Text("結束時間要晚於開始時間").font(.caption).foregroundStyle(.red)
-                }
-                Button {
-                    apply()
-                } label: {
-                    Text("套用到已勾選的 \(targets.count) 項")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!isValid)
-                Text("各項目保留自己的日期，只統一開始和結束時間；不想套用的先取消勾選。套用後可以再逐張修改。")
-                    .font(.caption2).foregroundStyle(.secondary)
             }
             .padding()
             .background(Color.blue.opacity(0.08))
