@@ -29,7 +29,7 @@ struct ItemCard: View {
                     .fixedSize()
             }
             Text(item.type == .event
-                 ? "行程：有明確時間，會寫進「行事曆」"
+                 ? "行程：會寫進「行事曆」（沒寫時間就是整天，關掉「整天」可設時間）"
                  : "待辦：只看截止時間，會寫進「提醒事項」")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -65,7 +65,19 @@ struct ItemCard: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Toggle("整天", isOn: $item.allDay)
+                Toggle("整天", isOn: Binding(
+                    get: { item.allDay },
+                    set: { on in
+                        item.allDay = on
+                        // 從整天改成有時間：起點若還在午夜，先放 09:00，不要變成午夜行程
+                        if !on, let s = item.start {
+                            let cal = Calendar.current
+                            if cal.component(.hour, from: s) == 0 && cal.component(.minute, from: s) == 0 {
+                                item.start = cal.date(bySettingHour: 9, minute: 0, second: 0, of: s)
+                                item.end = nil
+                            }
+                        }
+                    }))
                     .font(.subheadline)
                 if calendars.count > 1 {
                     HStack {
@@ -176,5 +188,69 @@ struct ItemCard: View {
         .padding(10)
         .background(Color.orange.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+
+/// 一次解析出好幾個項目時，把它們全部設成同一個時段（各自保留自己的日期）。
+/// 例如一張截圖裡的六堂課都在 19:00–21:00。只套用在已勾選、有日期的項目。
+struct BatchTimeBar: View {
+    @Binding var items: [ParsedItem]
+    /// 套用後通知外面重新檢查衝突。
+    var onApplied: () -> Void = {}
+
+    @State private var start = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var end = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date()) ?? Date()
+
+    private var targets: [Int] {
+        items.indices.filter { items[$0].isSelected && items[$0].start != nil }
+    }
+
+    private var isValid: Bool {
+        let cal = Calendar.current
+        func m(_ d: Date) -> Int { cal.component(.hour, from: d) * 60 + cal.component(.minute, from: d) }
+        return m(end) > m(start)
+    }
+
+    var body: some View {
+        if targets.count >= 2 {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("全部設為同一時段", systemImage: "clock.arrow.2.circlepath")
+                    .font(.subheadline.bold())
+                DatePicker("開始", selection: $start, displayedComponents: .hourAndMinute)
+                DatePicker("結束", selection: $end, displayedComponents: .hourAndMinute)
+                if !isValid {
+                    Text("結束時間要晚於開始時間").font(.caption).foregroundStyle(.red)
+                }
+                Button {
+                    apply()
+                } label: {
+                    Text("套用到已勾選的 \(targets.count) 項")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!isValid)
+                Text("各項目保留自己的日期，只統一開始和結束時間；不想套用的先取消勾選。套用後可以再逐張修改。")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding()
+            .background(Color.blue.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    private func apply() {
+        let cal = Calendar.current
+        let sc = cal.dateComponents([.hour, .minute], from: start)
+        let ec = cal.dateComponents([.hour, .minute], from: end)
+        for i in targets {
+            guard let day = items[i].start else { continue }
+            items[i].type = .event
+            items[i].allDay = false
+            items[i].start = cal.date(bySettingHour: sc.hour ?? 9, minute: sc.minute ?? 0, second: 0, of: day)
+            items[i].end = cal.date(bySettingHour: ec.hour ?? 10, minute: ec.minute ?? 0, second: 0, of: day)
+            items[i].timeWarning = nil
+        }
+        onApplied()
     }
 }

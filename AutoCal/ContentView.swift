@@ -109,6 +109,7 @@ struct ContentView: View {
                             }
                             .disabled(vm.isParsing)
                         }
+                        BatchTimeBar(items: $vm.items) { Task { await vm.recheckConflicts() } }
                         ForEach($vm.items) { $item in
                             ItemCard(item: $item)
                         }

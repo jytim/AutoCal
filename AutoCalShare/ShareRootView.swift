@@ -41,6 +41,7 @@ struct ShareRootView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("確認要加入的項目").font(.headline)
+                    BatchTimeBar(items: $items) { Task { items = await checker.annotate(items) } }
                     ForEach($items) { $item in ItemCard(item: $item) }
                     if hasUndecidedConflicts {
                         Label("請先為每個衝突選擇處理方式，才能加入", systemImage: "hand.raised.fill")
