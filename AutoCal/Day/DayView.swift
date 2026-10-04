@@ -34,8 +34,8 @@ struct DayView: View {
                 if !vm.allDay.isEmpty { allDayStrip }
                 timeline
             }
-            .navigationTitle("日程")
-            .navigationBarTitleDisplayMode(.inline)
+            // 分頁列已經寫了「日程」，上面不再重複標題，把空間留給時間軸
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear { Task { await vm.load() } }
             .onReceive(courseStore.$courses) { _ in Task { await vm.load() } }
             .sheet(item: $selected) { event in
@@ -85,24 +85,27 @@ struct DayView: View {
     // MARK: - 整天項目
 
     private var allDayStrip: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(vm.allDay) { item in
-                HStack(spacing: 6) {
-                    Text(item.title).font(.footnote.weight(.semibold))
-                    if let p = item.progress {
-                        Text(p).font(.caption2).opacity(0.9)
+        // 整天項目縮成一排小標籤（可橫向滑動），不再每個佔一整條
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(vm.allDay) { item in
+                    HStack(spacing: 5) {
+                        Circle().fill(item.color).frame(width: 7, height: 7)
+                        Text(item.title).font(.caption.weight(.semibold))
+                        if let p = item.progress {
+                            Text(p.replacingOccurrences(of: "第", with: "").replacingOccurrences(of: "天", with: ""))
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
                     }
-                    Spacer(minLength: 0)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(item.color.opacity(0.17))
+                    .clipShape(Capsule())
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(item.color)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
+            .padding(.horizontal)
         }
-        .padding(.horizontal)
-        .padding(.bottom, 8)
+        .padding(.bottom, 6)
     }
 
     // MARK: - 時間軸
@@ -186,7 +189,7 @@ struct DayView: View {
                         return y(of: o.start, hh: hh, startHour: r.start)
                     }.max()
                     let shift = max(0, (behindTop.map { $0 + 15 } ?? 0) - baseY)
-                    block(e, width: width, stacked: info.count > 1, hh: hh, startHour: r.start,
+                    block(e, width: width, back: info.count > 1 && !onTop, hh: hh, startHour: r.start,
                           totalH: CGFloat(hours) * hh, shift: shift)
                         .shadow(color: .black.opacity(info.count > 1 ? 0.25 : 0.08), radius: 1.5, y: 1)
                         .offset(x: timeColWidth + 6 + stagger * CGFloat(info.lane),
@@ -216,33 +219,50 @@ struct DayView: View {
         return max(CGFloat(minutes - startHour * 60) / 60, 0) * hh
     }
 
-    private func block(_ e: TimetableEvent, width: CGFloat, stacked: Bool,
+    /// 行程卡片：開始時間在上緣、結束時間在下緣，標題置中。
+    /// 太矮放不下時，改成一行「標題　開始–結束」。疊在後面的卡片只露出一條，也用一行。
+    private func block(_ e: TimetableEvent, width: CGFloat, back: Bool,
                        hh: CGFloat, startHour: Int, totalH: CGFloat, shift: CGFloat) -> some View {
         // 高度直接用「時間長度」算，這樣結束在午夜（24:00）的行程也不會算錯
         let top = y(of: e.start, hh: hh, startHour: startHour)
         let natural = CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
         let height = min(max(natural - shift, 22), max(totalH - top - shift, 22))
-        let compact = height < 30
-        return VStack(alignment: .leading, spacing: 2) {
-            Text(e.title)
-                .font(.system(size: compact ? 12 : (stacked ? 12 : 14), weight: .semibold))
-                .lineLimit(height > 60 ? 2 : 1)
-            if height > 34 {
-                Text("\(Self.hm.string(from: e.start))–\(Self.hm.string(from: e.end))")
-                    .font(.system(size: 12).monospacedDigit())
-                    .opacity(0.92)
-            }
-            if height > 66, let loc = e.location, !loc.isEmpty {
-                Label(loc, systemImage: "mappin.and.ellipse")
-                    .font(.system(size: 11)).lineLimit(1).opacity(0.9)
+        let range = "\(Self.hm.string(from: e.start))–\(Self.hm.string(from: e.end))"
+        let tall = height >= 48 && !back
+        return Group {
+            if tall {
+                VStack(spacing: 0) {
+                    Text(Self.hm.string(from: e.start))
+                        .font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: 0)
+                    VStack(spacing: 2) {
+                        Text(e.title).font(.system(size: 14, weight: .semibold))
+                            .multilineTextAlignment(.center).lineLimit(2)
+                        if height > 84, let loc = e.location, !loc.isEmpty {
+                            Label(loc, systemImage: "mappin.and.ellipse")
+                                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Text(Self.hm.string(from: e.end))
+                        .font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .padding(.vertical, 3)
+            } else {
+                HStack(spacing: 6) {
+                    Text(e.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(range).font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .frame(maxHeight: .infinity, alignment: back ? .top : .center)
+                .padding(.top, back ? 1 : 0)
             }
         }
         .foregroundStyle(.primary)
         .padding(.leading, 12).padding(.trailing, 6)
-        // 疊在一起時，後面那張只露出一小條，上下留白要小，標題才不會被前面那張蓋住
-        .padding(.top, (stacked || compact) ? 1 : 5)
-        .padding(.bottom, compact ? 0 : 5)
-        .frame(width: width, height: height - 1, alignment: .topLeading)
+        .frame(width: width, height: height - 1)
         .tintedCard(e.color, radius: 8)
     }
 
@@ -252,19 +272,35 @@ struct DayView: View {
         let top = y(of: e.start, hh: hh, startHour: startHour)
         let natural = CGFloat(e.end.timeIntervalSince(e.start) / 3600) * hh
         let height = min(max(natural, 22), max(totalH - top, 22))
-        return VStack(alignment: .leading, spacing: 1) {
-            Text(e.title).font(.system(size: 11, weight: .semibold)).lineLimit(height > 52 ? 2 : 1)
-            if height > 34 {
-                Text(Self.hm.string(from: e.start)).font(.system(size: 10).monospacedDigit()).opacity(0.9)
-            }
-            if height > 52, let loc = e.location, !loc.isEmpty {
-                Text(loc).font(.system(size: 10)).lineLimit(1).opacity(0.9)
+        let tall = height >= 48
+        return Group {
+            if tall {
+                VStack(spacing: 0) {
+                    Text(Self.hm.string(from: e.start))
+                        .font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: 0)
+                    VStack(spacing: 1) {
+                        Text(e.title).font(.system(size: 11, weight: .semibold))
+                            .multilineTextAlignment(.center).lineLimit(2)
+                        if height > 70, let loc = e.location, !loc.isEmpty {
+                            Text(loc).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Text(Self.hm.string(from: e.end))
+                        .font(.system(size: 9).monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .padding(.vertical, 3)
+            } else {
+                Text(e.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
         .foregroundStyle(.primary)
         .padding(.leading, 9).padding(.trailing, 4)
-        .padding(.top, 2)
-        .frame(width: width, height: height - 1, alignment: .topLeading)
+        .frame(width: width, height: height - 1)
         .tintedCard(e.color, radius: 6, bar: 3)
     }
 
