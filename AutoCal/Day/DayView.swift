@@ -19,7 +19,9 @@ struct DayView: View {
     /// "timeline" = 時間軸格子（預設，單日維度）、"agenda" = 議程清單
     @AppStorage("ui.dayMode") private var mode = "timeline"
 
-    private let timeColWidth: CGFloat = 40
+    /// 時間軸中線的位置（佔可用寬度的比例）：左右拉動可以調整行程與課堂兩側的寬度。
+    @AppStorage("ui.dayAxisFraction") private var axisFraction = 0.65
+    @State private var dragStartCenter: CGFloat?
 
     private static let title: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "zh_TW"); f.dateFormat = "M月d日 EEEE"; return f
@@ -343,8 +345,10 @@ struct DayView: View {
             let hasLane = !courseStore.courses.isEmpty
             let total = geo.size.width - 2 * m
             let axisW: CGFloat = hasLane ? 76 : 40
-            let classW: CGFloat = hasLane ? max(total * 0.24, 76) : 0
-            let eventsW = hasLane ? total - axisW - classW - 2 * gap : total - axisW - gap
+            // 中線位置由使用者拉動決定；兩側至少留 90（行程）與 70（課堂）
+            let rawEvents = CGFloat(axisFraction) * total - axisW / 2 - gap
+            let eventsW = hasLane ? min(max(rawEvents, 90), total - axisW - 2 * gap - 70) : total - axisW - gap
+            let classW: CGFloat = hasLane ? total - axisW - eventsW - 2 * gap : 0
             let eventsX = hasLane ? m : m + axisW + gap
             let axisX = hasLane ? m + eventsW + gap : m
             let classX = axisX + axisW + gap
@@ -381,6 +385,32 @@ struct DayView: View {
                                 .background(Color(.systemBackground))
                                 .frame(width: axisW / 2 - 2, alignment: .leading)
                                 .offset(x: axisX + axisW / 2 + 2, y: t.y - 6)
+                        }
+
+                        // 時間軸中線：一條細線加一個把手，左右拉動調整兩側的寬度
+                        if hasLane {
+                            Rectangle().fill(Color.secondary.opacity(0.35))
+                                .frame(width: 1, height: totalH)
+                                .offset(x: axisX + axisW / 2)
+                            Capsule().fill(Color.secondary.opacity(0.55))
+                                .frame(width: 5, height: 34)
+                                .offset(x: axisX + axisW / 2 - 2.5, y: totalH / 2 - 17)
+                            Color.clear.contentShape(Rectangle())
+                                .frame(width: axisW, height: totalH)
+                                .offset(x: axisX)
+                                .gesture(
+                                    DragGesture(minimumDistance: 4)
+                                        .onChanged { v in
+                                            GestureGuard.axisDragging = true
+                                            let start = dragStartCenter ?? (eventsW + gap + axisW / 2)
+                                            dragStartCenter = start
+                                            axisFraction = Double(min(max((start + v.translation.width) / total, 0.2), 0.9))
+                                        }
+                                        .onEnded { _ in
+                                            dragStartCenter = nil
+                                            // 稍後才解除，避免外層「左右滑動換日」把這次拉動當成滑動
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { GestureGuard.axisDragging = false }
+                                        })
                         }
 
                         if hasLane {
@@ -503,4 +533,10 @@ struct DayView: View {
             }
         }
     }
+}
+
+
+/// 拉動時間軸中線時，外層不要同時把它當成「左右滑動換日」。
+enum GestureGuard {
+    static var axisDragging = false
 }

@@ -46,7 +46,7 @@ struct CalendarContainerView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 30).onEnded { v in
                     let dx = v.translation.width, dy = v.translation.height
-                    guard abs(dx) > 70, abs(dx) > abs(dy) * 1.8 else { return }
+                    guard !GestureGuard.axisDragging, abs(dx) > 70, abs(dx) > abs(dy) * 1.8 else { return }
                     step(dx < 0 ? 1 : -1)
                 })
         }
