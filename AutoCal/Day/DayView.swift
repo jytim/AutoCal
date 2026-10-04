@@ -110,13 +110,13 @@ struct DayView: View {
 
     // MARK: - 時間軸
 
-    /// 設定的基本顯示時段。比例（每小時多高）永遠用它算，所以每天看起來尺度一致。
+    /// 設定的基本顯示時段（預設 8–22）。
     private var baseRange: (start: Int, end: Int) {
         let s = min(max(baseStart, 0), 23)
         return (s, min(max(baseEnd, s + 1), 24))
     }
 
-    /// 實際內容範圍：基本時段，加上當天超出的行程。超出的部分用捲動看，不壓縮比例。
+    /// 實際顯示範圍：基本時段，加上當天超出的行程（每天的刻度可能不同，但整天永遠一頁看完）。
     private var fullRange: (start: Int, end: Int) {
         let cal = Calendar.current
         let base = baseRange
@@ -155,29 +155,16 @@ struct DayView: View {
         GeometryReader { geo in
             let base = baseRange
             let full = fullRange
-            let baseHours = base.end - base.start
             let fullHours = full.end - full.start
-            // 底部留給浮動的分頁列；每小時高度只由基本時段決定
-            let hh = min((geo.size.height - 84) / CGFloat(baseHours), 64)
+            // 整天一頁看完：把「基本時段加上超出的行程」剛好塞進畫面；底部留給浮動的分頁列
+            let hh = min((geo.size.height - 84) / CGFloat(fullHours), 64)
             let totalH = CGFloat(fullHours) * hh
             let contentWidth = geo.size.width - timeColWidth - 12
             let tags = timeTags(hh: hh, startHour: full.start)
-            let earlyCount = vm.timed.filter { Calendar.current.component(.hour, from: $0.start) < base.start }.count
-            let lateCount = vm.timed.filter { ev in
-                let cal = Calendar.current
-                let dayEnd = cal.startOfDay(for: vm.day).addingTimeInterval(86400 - 1)
-                let endH = ev.end > dayEnd ? 24 : cal.component(.hour, from: ev.end) + (cal.component(.minute, from: ev.end) > 0 ? 1 : 0)
-                return endH > base.end
-            }.count
 
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     ZStack(alignment: .topLeading) {
-                        // 捲動用的隱形錨點
-                        Color.clear.frame(width: 1, height: 1).id("top")
-                        Color.clear.frame(width: 1, height: 1).id("base").offset(y: CGFloat(base.start - full.start) * hh - 8)
-                        Color.clear.frame(width: 1, height: 1).id("bottom").offset(y: totalH)
-
                         // 最下方的結束時間也標出來
                         ForEach(0...fullHours, id: \.self) { i in
                             let yy = CGFloat(i) * hh
@@ -255,48 +242,13 @@ struct DayView: View {
                         nowLine(width: geo.size.width - timeColWidth, hh: hh, startHour: full.start, totalH: totalH)
                     }
                     .frame(width: geo.size.width, height: totalH + 14, alignment: .topLeading)
-                    .padding(.top, 7)
+                    .padding(.top, 16)
                 }
-                .scrollDisabled(fullHours == baseHours)
-                // 超出基本時段的行程：比例不變，捲動才看得到，並在邊緣提示
-                .overlay(alignment: .top) {
-                    if earlyCount > 0 {
-                        edgePill("較早還有 \(earlyCount) 項", systemImage: "chevron.up") {
-                            withAnimation { proxy.scrollTo("top", anchor: .top) }
-                        }
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if lateCount > 0 {
-                        edgePill("較晚還有 \(lateCount) 項", systemImage: "chevron.down") {
-                            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-                        }
-                        .padding(.bottom, 20)
-                    }
-                }
-                .onAppear { DispatchQueue.main.async { proxy.scrollTo("base", anchor: .top) } }
-                .onChange(of: vm.day) { _, _ in
-                    front = nil
-                    DispatchQueue.main.async { proxy.scrollTo("base", anchor: .top) }
-                }
-                .onChange(of: vm.timed.count) { _, _ in
-                    front = nil
-                    DispatchQueue.main.async { proxy.scrollTo("base", anchor: .top) }
-                }
+                .scrollDisabled(true)
+                .onChange(of: vm.day) { _, _ in front = nil }
+                .onChange(of: vm.timed.count) { _, _ in front = nil }
             }
         }
-    }
-
-    private func edgePill(_ text: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(text, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
-        }
-        .buttonStyle(.plain)
-        .padding(.vertical, 4)
     }
 
     private func y(of date: Date, hh: CGFloat, startHour: Int) -> CGFloat {
