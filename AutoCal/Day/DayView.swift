@@ -165,15 +165,9 @@ struct DayView: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     ZStack(alignment: .topLeading) {
-                        // 最下方的結束時間也標出來
+                        // 整點只留淡淡的橫線，不標數字；左邊只標行程的開始與結束時間
                         ForEach(0...fullHours, id: \.self) { i in
                             let yy = CGFloat(i) * hh
-                            if !tags.contains(where: { abs($0.y - yy) < 9 }) {
-                                Text(String(format: "%02d", full.start + i))
-                                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                                    .frame(width: timeColWidth - 6, alignment: .trailing)
-                                    .offset(y: yy - 7)
-                            }
                             Rectangle()
                                 .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
                                 .padding(.leading, timeColWidth).offset(y: yy)
