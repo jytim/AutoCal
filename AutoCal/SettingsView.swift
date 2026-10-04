@@ -9,6 +9,8 @@ struct SettingsView: View {
     @AppStorage("llm.model") private var llmModel = ""
     @AppStorage(EventColor.followKey) private var followCalendarColor = true
     @AppStorage("ui.showTimetable") private var showTimetable = true
+    @AppStorage("ui.dayStartHour") private var dayStart = 8
+    @AppStorage("ui.dayEndHour") private var dayEnd = 22
 
     var body: some View {
         NavigationStack {
@@ -32,6 +34,19 @@ struct SettingsView: View {
                     }
                 } footer: {
                     Text("不是學生可以關掉課表分頁。課堂資料仍然保留，衝突偵測、上課提醒、鎖定畫面桌布都照常使用；要新增或修改課堂就從「課堂管理」進去。")
+                }
+
+                Section {
+                    Picker("開始", selection: $dayStart) {
+                        ForEach(0...12, id: \.self) { Text(String(format: "%02d:00", $0)).tag($0) }
+                    }
+                    Picker("結束", selection: $dayEnd) {
+                        ForEach(13...24, id: \.self) { Text(String(format: "%02d:00", $0)).tag($0) }
+                    }
+                } header: {
+                    Text("日程顯示時段")
+                } footer: {
+                    Text("日程頁一頁看完整天，只顯示這段時間。當天有行程超出這個範圍，會自動往外擴。範圍越大，每小時越矮。")
                 }
 
                 Section {

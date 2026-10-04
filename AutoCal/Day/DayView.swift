@@ -9,6 +9,9 @@ struct DayView: View {
     @State private var courseToEdit: Course?
     /// 被點到最前面的疊放卡片（nil = 照預設順序）。
     @State private var front: String?
+    /// 日程預設顯示的時段（設定裡可改）；當天有行程超出時仍會自動往外擴。
+    @AppStorage("ui.dayStartHour") private var baseStart = 8
+    @AppStorage("ui.dayEndHour") private var baseEnd = 22
 
     private let timeColWidth: CGFloat = 40
 
@@ -107,7 +110,7 @@ struct DayView: View {
     /// 顯示的時段：預設 8–22 點，有行程超出就往外擴，讓整天剛好塞進一頁、不用捲動。
     private var hourRange: (start: Int, end: Int) {
         let cal = Calendar.current
-        var s = 8, e = 22
+        var s = min(max(baseStart, 0), 23), e = min(max(baseEnd, s + 1), 24)
         for ev in vm.timed {
             s = min(s, cal.component(.hour, from: ev.start))
             let endH = cal.component(.hour, from: ev.end) + (cal.component(.minute, from: ev.end) > 0 ? 1 : 0)
@@ -124,6 +127,14 @@ struct DayView: View {
             let hh = min((geo.size.height - 84) / CGFloat(hours), 64)
             let contentWidth = geo.size.width - timeColWidth - 12
             ZStack(alignment: .topLeading) {
+                // 最下方的結束時間也標出來，才看得出整個範圍到幾點
+                Text(String(format: "%02d", r.end))
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .frame(width: timeColWidth - 6, alignment: .trailing)
+                    .offset(y: CGFloat(hours) * hh - 7)
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
+                    .padding(.leading, timeColWidth).offset(y: CGFloat(hours) * hh)
                 ForEach(0..<hours, id: \.self) { i in
                     let y = CGFloat(i) * hh
                     Text(String(format: "%02d", r.start + i))
