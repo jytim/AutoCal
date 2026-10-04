@@ -51,15 +51,19 @@ struct CourseDraft: Identifiable, Decodable {
     var isSelected = true
     /// 這張截圖看得到星期標題嗎。看不到的話，星期是靠推測的，要請使用者確認。
     var hasHeader = true
+    /// 這張截圖看得到左邊的節次／時間欄嗎。看不到就讀不出時間。
+    var hasPeriodAxis = true
     /// 課程方塊水平中心點，佔截圖寬度的百分比（0–100）。沒有星期標題時，用它推算星期。
     var xCenter: Double?
+    /// 這筆來自第幾張截圖（由匯入流程填入，不來自模型）。
+    var sourceIndex = 0
     /// 星期是推測的（來自沒有標題的截圖），確認畫面會標出來。
     var weekdayGuessed = false
     /// 合併時留下的提醒（例如合併後時段變長，可能其實是不同天的兩堂課）。
     var mergeNote: String?
 
     enum CodingKeys: String, CodingKey {
-        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, xCenter
+        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, hasPeriodAxis, xCenter
     }
 
     init(from decoder: Decoder) throws {
@@ -72,6 +76,7 @@ struct CourseDraft: Identifiable, Decodable {
         end = Self.flexString(c, .end)
         location = Self.flexString(c, .location)
         hasHeader = (try? c.decodeIfPresent(Bool.self, forKey: .hasHeader)) ?? true
+        hasPeriodAxis = (try? c.decodeIfPresent(Bool.self, forKey: .hasPeriodAxis)) ?? true
         if let x = try? c.decodeIfPresent(Double.self, forKey: .xCenter) { xCenter = x }
         else if let s = try? c.decodeIfPresent(String.self, forKey: .xCenter), let x = Double(s) { xCenter = x }
     }
@@ -125,38 +130,73 @@ struct CourseDraft: Identifiable, Decodable {
 }
 
 extension CourseDraft {
-    /// 沒有星期標題的截圖：用「有標題的截圖」裡各星期方塊的水平位置，做線性推算每個星期欄的位置，
-    /// 再把沒有標題那張的每個方塊指派給最近的欄。要在所有截圖都辨識完之後才做（不受截圖順序影響）。
-    /// 至少要看到兩個不同的星期才推得出欄距；推不出來就維持「星期不明」，由使用者自己選。
-    /// 指派出來的星期一律標成「推測」，確認畫面會請使用者確認。
-    static func assigningWeekdays(_ drafts: [CourseDraft]) -> [CourseDraft] {
-        let pts = drafts.compactMap { d -> (w: Double, x: Double)? in
-            guard d.hasHeader, (1...7).contains(d.weekday), let x = d.xCenter else { return nil }
-            return (Double(d.weekday), x)
-        }
-        guard Set(pts.map(\.w)).count >= 2 else { return drafts }
+    /// 名字正規化：去掉空白、全形括號轉半形，免得「初級日文 (一)」和「初級日文(一)」被當成不同課。
+    static func normalizedName(_ n: String) -> String {
+        n.filter { !$0.isWhitespace }
+            .replacingOccurrences(of: "（", with: "(").replacingOccurrences(of: "）", with: ")")
+    }
+
+    /// 兩個名字算同一門課：正規化後相同，或其中一個是另一個的一部分
+    /// （截圖切到邊緣時，模型只讀到殘缺的名字，例如「波動」「報英文」）。
+    static func namesMatch(_ a: String, _ b: String) -> Bool {
+        let x = normalizedName(a), y = normalizedName(b)
+        if x == y { return true }
+        let (short, long) = x.count <= y.count ? (x, y) : (y, x)
+        return short.count >= 2 && long.contains(short)
+    }
+
+    /// 最小平方法：用 (星期, 水平位置%) 的點，推出「每往後一個星期，位置移動多少」。
+    /// 至少要有兩個不同的星期、兩欄間距至少 5% 寬度才算數。
+    private static func fitColumns(_ pts: [(w: Double, x: Double)]) -> (a: Double, b: Double)? {
+        guard Set(pts.map(\.w)).count >= 2 else { return nil }
         let n = Double(pts.count)
         let mw = pts.map(\.w).reduce(0, +) / n, mx = pts.map(\.x).reduce(0, +) / n
         let variance = pts.map { ($0.w - mw) * ($0.w - mw) }.reduce(0, +)
-        guard variance > 0 else { return drafts }
-        let slope = pts.map { ($0.w - mw) * ($0.x - mx) }.reduce(0, +) / variance
-        guard slope > 5 else { return drafts }          // 兩欄之間至少隔 5% 寬度才合理
-        let intercept = mx - slope * mw
-        // 每個星期欄的預測中心（只留在圖片範圍內的）
-        let centers = (1...7).compactMap { w -> (w: Int, x: Double)? in
-            let x = intercept + slope * Double(w)
-            return (x > 0 && x < 100) ? (w, x) : nil
-        }
-        guard !centers.isEmpty else { return drafts }
-        return drafts.map { d in
-            var d = d
-            if d.weekday == 0, let x = d.xCenter,
-               let best = centers.min(by: { abs($0.x - x) < abs($1.x - x) }) {
-                d.weekday = best.w
-                d.weekdayGuessed = true
+        guard variance > 0 else { return nil }
+        let b = pts.map { ($0.w - mw) * ($0.x - mx) }.reduce(0, +) / variance
+        guard b > 5 else { return nil }
+        return (mx - b * mw, b)
+    }
+
+    /// 沒有星期標題的截圖：不讓模型猜星期，而是用方塊的水平位置推算。全部截圖都辨識完才做（不受順序影響）：
+    /// 1. 錨點：這張圖裡和「有標題的截圖」同名、同時段、而且在有標題那邊只出現在某一天的課，
+    ///    星期直接沿用；有兩個以上不同星期的錨點，就用它們替「這一張圖」單獨校正欄位位置
+    ///    （圖被左右裁切過、欄位整體偏移也不怕）。
+    /// 2. 沒有足夠錨點時，用所有有標題的截圖學到的欄位位置推算（至少要看到兩個不同的星期）。
+    /// 3. 都推不出來就維持「星期不明」，由使用者自己選。
+    /// 指派出來的星期一律標成「推測」，確認畫面會請使用者確認。
+    static func assigningWeekdays(_ drafts: [CourseDraft]) -> [CourseDraft] {
+        let header = drafts.filter { $0.hasHeader && (1...7).contains($0.weekday) }
+        let global = fitColumns(header.compactMap { d in d.xCenter.map { (Double(d.weekday), $0) } })
+        var out = drafts
+        let sources = Set(drafts.filter { !$0.hasHeader && $0.weekday == 0 }.map(\.sourceIndex))
+        for s in sources {
+            let idxs = out.indices.filter { out[$0].sourceIndex == s && !out[$0].hasHeader && out[$0].weekday == 0 }
+            var anchors: [Int: Int] = [:]          // 草稿索引 → 沿用的星期
+            for i in idxs {
+                guard let sm = out[i].startMinute, let em = out[i].endMinute else { continue }
+                let days = Set(header.filter {
+                    namesMatch($0.name, out[i].name) && $0.startMinute == sm && $0.endMinute == em
+                }.map(\.weekday))
+                if days.count == 1, let w = days.first { anchors[i] = w }
             }
-            return d
+            let anchorFit = fitColumns(anchors.compactMap { i, w in out[i].xCenter.map { (Double(w), $0) } })
+            let model = anchorFit ?? global
+            for i in idxs {
+                if let w = anchors[i] {
+                    out[i].weekday = w; out[i].weekdayGuessed = true; continue
+                }
+                guard let x = out[i].xCenter, let m = model else { continue }
+                let centers = (1...7).compactMap { w -> (w: Int, x: Double)? in
+                    let c = m.a + m.b * Double(w)
+                    return (c > -5 && c < 105) ? (w, c) : nil
+                }
+                if let best = centers.min(by: { abs($0.x - x) < abs($1.x - x) }) {
+                    out[i].weekday = best.w; out[i].weekdayGuessed = true
+                }
+            }
         }
+        return out
     }
 
     /// 合併多張截圖辨識出的課：同一門課、同一天，時段重疊或緊接（相隔 20 分鐘內，
@@ -168,17 +208,18 @@ extension CourseDraft {
             let name = d.name.trimmingCharacters(in: .whitespaces)
             // 星期不明（0）的：如果整份課表裡這門課只在同一天出現，就沿用那一天
             if d.weekday == 0 {
-                let days = Set(drafts.filter { $0.weekday != 0
-                    && $0.name.trimmingCharacters(in: .whitespaces) == name }.map(\.weekday))
+                let days = Set(drafts.filter { $0.weekday != 0 && namesMatch($0.name, name) }.map(\.weekday))
                 if days.count == 1, let only = days.first { d.weekday = only }
             }
             if let i = out.firstIndex(where: { o in
                 guard let os = o.startMinute, let oe = o.endMinute else { return false }
-                return o.name.trimmingCharacters(in: .whitespaces) == name
+                return namesMatch(o.name, name)
                     && o.weekday == d.weekday
                     && ds <= oe + 20 && os <= de + 20
             }) {
                 var m = out[i]
+                // 名字殘缺（被截圖邊緣切到）時，留下較完整的那個
+                if normalizedName(name).count > normalizedName(m.name).count { m.name = name }
                 let ms = m.startMinute ?? ds, me = m.endMinute ?? de
                 let grew = ds < ms || de > me
                 if ds < ms { m.startPeriod = d.startPeriod; m.start = d.start }

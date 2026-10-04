@@ -36,7 +36,9 @@ final class CourseAddModel: ObservableObject {
                 guard let data = try await item.loadTransferable(type: Data.self) else {
                     failures.append("第 \(i + 1) 張：讀不到圖片"); continue
                 }
-                all += try await LLMClient().parseCourses(imageData: Self.downscaled(data))
+                var parsed = try await LLMClient().parseCourses(imageData: Self.downscaled(data))
+                for k in parsed.indices { parsed[k].sourceIndex = i }
+                all += parsed
             } catch {
                 failures.append("第 \(i + 1) 張：\(error.localizedDescription)")
             }

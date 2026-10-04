@@ -7,12 +7,14 @@ struct LLMClient {
         case badResponse(String)
         case noContent
         case decodeFailed(String)
+        case noPeriodAxis
 
         var errorDescription: String? {
             switch self {
             case .badResponse(let s): return "伺服器回應異常：\(s)"
             case .noContent: return "模型沒有回傳內容"
             case .decodeFailed(let s): return "無法解析模型輸出：\(s)"
+            case .noPeriodAxis: return "這張截圖看不到左邊的節次／時間欄，沒辦法換算上課時間。請重新截圖，並把最左邊的節次欄一起截進去。"
             }
         }
     }
@@ -106,6 +108,7 @@ struct LLMClient {
         - xCenter: 這個課程方塊水平中心點的位置，用整張截圖寬度的百分比表示（最左邊是 0，最右邊是 100，例如 45.5）
         - weekday: 星期，1=週一、2=週二、…、7=週日。只有當這張截圖「真的看得到星期標題列」時才填，看不到填 0
         - hasHeader: 布林。這張截圖看得到星期標題列（週一、週二、一、二…）填 true，否則填 false
+        - hasPeriodAxis: 布林。這張截圖看得到左邊的節次／時間欄（每一格寫著節次標籤）就填 true；完全看不到就填 false，此時 startPeriod 與 endPeriod 都填 null，不要自己編節次
         - startPeriod: 這門課占用的第一個節次（字串，例如 "3"、"10"、"A"）
         - endPeriod: 這門課占用的最後一個節次（字串）
         - location: 教室；沒有就用 null
@@ -134,7 +137,12 @@ struct LLMClient {
         }
         do {
             // weekday = 0 代表星期不明，保留下來讓使用者在確認畫面自己選
-            return try JSONDecoder().decode([CourseDraft].self, from: data)
+            let decoded = try JSONDecoder().decode([CourseDraft].self, from: data)
+            // 看不到節次欄、截圖上也沒印時間：讀不到時間，與其讀成錯的，不如直接告訴使用者
+            if !decoded.isEmpty, decoded.allSatisfy({ !$0.hasPeriodAxis && $0.start == nil && $0.end == nil }) {
+                throw LLMError.noPeriodAxis
+            }
+            return decoded
                 .filter { $0.startMinute != nil && $0.endMinute != nil && (0...7).contains($0.weekday) }
                 .map { d in
                     // 看不到星期標題的截圖：星期是推測的，標記起來讓使用者確認
