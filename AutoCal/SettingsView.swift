@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("brave.apiKey") private var braveKey = ""
+    @AppStorage(AppConfig.gatewayKeyName, store: AppConfig.sharedDefaults) private var gatewayKey = ""
     @AppStorage("llm.baseURL") private var llmBaseURL = ""
     @AppStorage("llm.model") private var llmModel = ""
     @AppStorage(EventColor.followKey) private var followCalendarColor = true
@@ -69,7 +70,17 @@ struct SettingsView: View {
                         Label("分享診斷紀錄", systemImage: "stethoscope")
                     }
                 } footer: {
-                    Text("從別的 App 分享給 AutoCal 閃退時，這裡會留下它最後做到哪一步，可以複製給開發者。")
+                    Text("從別的 App 分享給記吧閃退時，這裡會留下它最後做到哪一步，可以複製給開發者。")
+                }
+
+                Section {
+                    SecureField("貼上邀請金鑰", text: $gatewayKey)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("邀請金鑰")
+                } footer: {
+                    Text("辨識行程需要金鑰，向開發者索取。金鑰只存在這支手機，只會送給官方伺服器。")
                 }
 
                 Section {
@@ -92,7 +103,7 @@ struct SettingsView: View {
                 } header: {
                     Text("模型後端")
                 } footer: {
-                    Text("留空則使用預設：家中 <內網主機A> 優先，連不到時自動改用 3090。填了自訂位址就只用那一台。")
+                    Text("留空則使用官方伺服器。進階用途才需要填自訂位址（不會帶邀請金鑰）。")
                 }
             }
             .navigationTitle("設定")

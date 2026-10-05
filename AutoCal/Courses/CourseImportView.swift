@@ -23,25 +23,33 @@ struct CourseImportView: View {
     }
 
     private var selectedCount: Int { drafts.filter(\.isSelected).count }
-    /// 沒標題、星期推不出來的課，依 App 分出的「欄」分組（同一張截圖同一欄 = 同一天）。
+    /// 沒標題的截圖：同一欄的課 = 同一天。依 App 分出的「欄」分組（同一張截圖、同一欄），
+    /// 每一欄一個星期選單，改一次整欄一起換。
     private struct ColumnKey: Hashable { let source: Int; let group: Int }
-    private var pendingColumns: [(key: ColumnKey, names: [String])] {
+    private func isPending(_ d: CourseDraft) -> Bool {
+        d.isSelected && d.columnGroup != nil && (d.weekday == 0 || d.weekdayGuessed)
+    }
+    private var pendingColumns: [(key: ColumnKey, names: [String], weekday: Int)] {
         var order: [ColumnKey] = []
-        var names: [ColumnKey: [String]] = [:]
-        for d in drafts where d.weekday == 0 && d.isSelected {
-            guard let g = d.columnGroup else { continue }
-            let k = ColumnKey(source: d.sourceIndex, group: g)
-            if names[k] == nil { order.append(k) }
-            names[k, default: []].append(d.name)
+        var members: [ColumnKey: [CourseDraft]] = [:]
+        for d in drafts where isPending(d) {
+            let k = ColumnKey(source: d.sourceIndex, group: d.columnGroup!)
+            if members[k] == nil { order.append(k) }
+            members[k, default: []].append(d)
         }
-        return order.sorted { ($0.source, $0.group) < ($1.source, $1.group) }.map { ($0, names[$0] ?? []) }
+        return order.sorted { ($0.source, $0.group) < ($1.source, $1.group) }.map { k in
+            let ds = members[k] ?? []
+            let days = Set(ds.map(\.weekday))
+            return (k, ds.map(\.name), days.count == 1 ? (days.first ?? 0) : 0)
+        }
     }
 
     private func setWeekday(_ w: Int, for key: ColumnKey) {
-        for i in drafts.indices where drafts[i].weekday == 0
-            && drafts[i].sourceIndex == key.source && drafts[i].columnGroup == key.group {
+        guard w != 0 else { return }
+        for i in drafts.indices where drafts[i].sourceIndex == key.source
+            && drafts[i].columnGroup == key.group && isPending(drafts[i]) {
             drafts[i].weekday = w
-            drafts[i].weekdayGuessed = false      // 使用者自己選的
+            drafts[i].weekdayGuessed = false      // 使用者確認過了
         }
     }
 
@@ -83,17 +91,19 @@ struct CourseImportView: View {
                                     Text(col.names.joined(separator: "、")).font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Picker("星期", selection: Binding(get: { 0 }, set: { setWeekday($0, for: col.key) })) {
-                                    Text("請選擇").tag(0)
+                                Picker("星期", selection: Binding(get: { col.weekday },
+                                                                 set: { setWeekday($0, for: col.key) })) {
+                                    if col.weekday == 0 { Text("請選擇").tag(0) }
                                     ForEach(1...7, id: \.self) { Text("週" + Course.weekdayNames[$0 - 1]).tag($0) }
                                 }
-                                .pickerStyle(.menu).labelsHidden().tint(.red)
+                                .pickerStyle(.menu).labelsHidden()
+                                .tint(col.weekday == 0 ? .red : .orange)
                             }
                         }
                     } header: {
-                        Text("沒有星期標題的截圖：每一欄選一次")
+                        Text("沒有星期標題的截圖：整欄一起設定")
                     } footer: {
-                        Text("App 依方塊的左右位置，把同一欄的課分成同一天。每一欄只要選一次星期，整欄一起套用。")
+                        Text("App 依方塊的左右位置，把同一欄（同一天）的課整理在一起，星期依「最左邊是週一」推算。對照截圖，不對就改這一欄的星期，整欄一起換，不用一堂一堂改。")
                     }
                 }
 

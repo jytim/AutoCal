@@ -5,6 +5,8 @@ struct LLMClient {
 
     enum LLMError: LocalizedError {
         case badResponse(String)
+        case unauthorized
+        case rateLimited
         case noContent
         case decodeFailed(String)
         case noPeriodAxis
@@ -12,6 +14,8 @@ struct LLMClient {
         var errorDescription: String? {
             switch self {
             case .badResponse(let s): return "伺服器回應異常：\(s)"
+            case .unauthorized: return "邀請金鑰無效或已過期，請到設定確認"
+            case .rateLimited: return "使用太頻繁了，請稍後再試"
             case .noContent: return "模型沒有回傳內容"
             case .decodeFailed(let s): return "無法解析模型輸出：\(s)"
             case .noPeriodAxis: return "這張截圖看不到左邊的節次／時間欄，沒辦法換算上課時間。請重新截圖，並把最左邊的節次欄一起截進去。"
@@ -216,8 +220,16 @@ struct LLMClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         req.timeoutInterval = 90
+        // 金鑰只送給官方閘道，不送給使用者自訂的位址
+        if ep.baseURL.host == AppConfig.gatewayURL.host, let key = AppConfig.gatewayKey {
+            req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
 
         let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse {
+            if http.statusCode == 401 { throw LLMError.unauthorized }
+            if http.statusCode == 429 { throw LLMError.rateLimited }
+        }
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw LLMError.badResponse(String(data: data, encoding: .utf8) ?? "unknown")
         }

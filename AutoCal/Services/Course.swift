@@ -233,9 +233,10 @@ extension CourseDraft {
     /// 只標記「星期還沒定」的方塊；欄數超過 7 代表分不好，就不分組。
     static func clusterColumns(_ drafts: [CourseDraft]) -> [CourseDraft] {
         var out = drafts
-        for s in Set(drafts.filter { !$0.hasHeader && $0.weekday == 0 }.map(\.sourceIndex)) {
-            let idxs = out.indices.filter { out[$0].sourceIndex == s && !out[$0].hasHeader
-                && out[$0].weekday == 0 && out[$0].xCenter != nil }
+        // 星期還沒定、或只是推測的（沒標題的截圖）才分組
+        func needsGroup(_ d: CourseDraft) -> Bool { !d.hasHeader && (d.weekday == 0 || d.weekdayGuessed) && d.xCenter != nil }
+        for s in Set(drafts.filter(needsGroup).map(\.sourceIndex)) {
+            let idxs = out.indices.filter { out[$0].sourceIndex == s && needsGroup(out[$0]) }
             let sorted = idxs.sorted { out[$0].xCenter! < out[$1].xCenter! }
             var groups: [[Int]] = []
             for i in sorted {
