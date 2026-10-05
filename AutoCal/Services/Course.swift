@@ -57,6 +57,9 @@ struct CourseDraft: Identifiable, Decodable {
     var xCenter: Double?
     /// 這筆來自第幾張截圖（由匯入流程填入，不來自模型）。
     var sourceIndex = 0
+    /// 沒有星期標題時，App 依方塊左右位置分出的「欄」（同一張截圖、同一欄 = 同一天）。
+    /// 編號由左到右遞增；星期推不出來時，確認畫面請使用者「每一欄選一次」。
+    var columnGroup: Int?
     /// 星期是推測的（來自沒有標題的截圖），確認畫面會標出來。
     var weekdayGuessed = false
     /// 合併時留下的提醒（例如合併後時段變長，可能其實是不同天的兩堂課）。
@@ -197,6 +200,28 @@ extension CourseDraft {
                     out[i].weekday = best.w; out[i].weekdayGuessed = true
                 }
             }
+        }
+        return clusterColumns(out)
+    }
+
+    /// 沒有星期標題的截圖：把方塊依水平位置分欄（最多 7 欄）。
+    /// 位置排序後，相鄰兩個之間的空隙超過 6% 寬度就切成新的一欄（模型估的位置約有 ±3% 誤差，
+    /// 而最窄的七欄課表欄距也有約 12%，所以不會把同一欄切開、也不會把相鄰兩欄併起來）。
+    /// 只標記「星期還沒定」的方塊；欄數超過 7 代表分不好，就不分組。
+    static func clusterColumns(_ drafts: [CourseDraft]) -> [CourseDraft] {
+        var out = drafts
+        for s in Set(drafts.filter { !$0.hasHeader && $0.weekday == 0 }.map(\.sourceIndex)) {
+            let idxs = out.indices.filter { out[$0].sourceIndex == s && !out[$0].hasHeader
+                && out[$0].weekday == 0 && out[$0].xCenter != nil }
+            let sorted = idxs.sorted { out[$0].xCenter! < out[$1].xCenter! }
+            var groups: [[Int]] = []
+            for i in sorted {
+                if let last = groups.last?.last, out[i].xCenter! - out[last].xCenter! <= 6 {
+                    groups[groups.count - 1].append(i)
+                } else { groups.append([i]) }
+            }
+            guard groups.count <= 7 else { continue }
+            for (g, members) in groups.enumerated() { for i in members { out[i].columnGroup = g } }
         }
         return out
     }
