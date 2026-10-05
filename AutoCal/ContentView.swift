@@ -7,6 +7,8 @@ final class InputViewModel: ObservableObject {
     @Published var isParsing = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
+    /// 剛加入的那一批，可以馬上復原。
+    @Published var lastRecords: [AddedRecord] = []
 
     private let llm = LLMClient()
     private let writer = EventStoreWriter()
@@ -55,6 +57,12 @@ final class InputViewModel: ObservableObject {
         items.contains { $0.isSelected && $0.resolution == .undecided }
     }
 
+    func undoLast() async {
+        let res = await AddHistory.undo(lastRecords)
+        lastRecords = []
+        successMessage = AddHistory.summary(res)
+    }
+
     func save() async {
         errorMessage = nil
         do {
@@ -63,6 +71,7 @@ final class InputViewModel: ObservableObject {
             if r.events > 0 { parts.append("\(r.events) 個行程") }
             if r.reminders > 0 { parts.append("\(r.reminders) 個待辦") }
             successMessage = parts.isEmpty ? "沒有選取任何項目" : "已加入 " + parts.joined(separator: "、")
+            lastRecords = r.records
             if r.failures.isEmpty {
                 items = []
                 text = ""
@@ -87,8 +96,15 @@ struct ContentView: View {
                     inputCard
 
                     if let msg = vm.successMessage {
-                        Label(msg, systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                        HStack {
+                            Label(msg, systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Spacer()
+                            if !vm.lastRecords.isEmpty {
+                                Button("復原") { Task { await vm.undoLast() } }
+                                    .buttonStyle(.bordered)
+                            }
+                        }
                     }
                     if let err = vm.errorMessage {
                         Label(err, systemImage: "exclamationmark.triangle.fill")

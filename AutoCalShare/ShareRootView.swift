@@ -8,6 +8,7 @@ struct ShareRootView: View {
     @State private var items: [ParsedItem] = []
     @State private var phase: Phase = .loading
     @State private var message: String?
+    @State private var lastRecords: [AddedRecord] = []
 
     enum Phase { case loading, review, done, failed }
 
@@ -49,7 +50,17 @@ struct ShareRootView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.largeTitle).foregroundStyle(.green)
                 Text(message ?? "已加入").font(.headline)
-                Button("完成") { onClose() }.buttonStyle(.borderedProminent)
+                HStack {
+                    if !lastRecords.isEmpty {
+                        Button("復原") {
+                            Task {
+                                let res = await AddHistory.undo(lastRecords)
+                                lastRecords = []; message = AddHistory.summary(res)
+                            }
+                        }.buttonStyle(.bordered)
+                    }
+                    Button("完成") { onClose() }.buttonStyle(.borderedProminent)
+                }
             }
         case .failed:
             VStack(spacing: 16) {
@@ -124,6 +135,7 @@ struct ShareRootView: View {
             if r.events > 0 { parts.append("\(r.events) 個行程") }
             if r.reminders > 0 { parts.append("\(r.reminders) 個待辦") }
             message = parts.isEmpty ? "沒有選取任何項目" : "已加入 " + parts.joined(separator: "、")
+            lastRecords = r.records
             if r.failures.isEmpty {
                 phase = .done
             } else {

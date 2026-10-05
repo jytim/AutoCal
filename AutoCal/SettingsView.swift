@@ -25,6 +25,11 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink {
+                        AddHistoryView()
+                    } label: {
+                        Label("加入紀錄", systemImage: "arrow.uturn.backward.circle")
+                    }
+                    NavigationLink {
                         CourseManageView()
                     } label: {
                         Label("課堂管理", systemImage: "books.vertical")

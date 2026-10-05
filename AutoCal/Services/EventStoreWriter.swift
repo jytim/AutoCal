@@ -10,6 +10,8 @@ final class EventStoreWriter {
         var events = 0
         var reminders = 0
         var failures: [String] = []
+        /// 這一次建立的項目，供「復原」使用。
+        var records: [AddedRecord] = []
     }
 
     /// 依需要請求權限並寫入。回傳寫入結果。
@@ -35,20 +37,21 @@ final class EventStoreWriter {
             do {
                 switch item.type {
                 case .event:
-                    try writeEvent(item)
+                    result.records.append(try writeEvent(item))
                     result.events += 1
                 case .todo:
-                    try writeReminder(item)
+                    result.records.append(try writeReminder(item))
                     result.reminders += 1
                 }
             } catch {
                 result.failures.append("\(item.title)：\(error.localizedDescription)")
             }
         }
+        AddHistory.add(AddBatch(records: result.records))
         return result
     }
 
-    private func writeEvent(_ item: ParsedItem) throws {
+    private func writeEvent(_ item: ParsedItem) throws -> AddedRecord {
         let event = EKEvent(eventStore: store)
         event.title = item.title
         event.location = item.location
@@ -73,9 +76,11 @@ final class EventStoreWriter {
             event.calendar = store.defaultCalendarForNewEvents
         }
         try store.save(event, span: .thisEvent)
+        return AddedRecord(isEvent: true, title: event.title ?? item.title, start: event.startDate,
+                           itemID: event.eventIdentifier ?? "")
     }
 
-    private func writeReminder(_ item: ParsedItem) throws {
+    private func writeReminder(_ item: ParsedItem) throws -> AddedRecord {
         let reminder = EKReminder(eventStore: store)
         reminder.title = item.title
         reminder.calendar = store.defaultCalendarForNewReminders()
@@ -86,5 +91,7 @@ final class EventStoreWriter {
             reminder.dueDateComponents = Calendar.current.dateComponents(units, from: due)
         }
         try store.save(reminder, commit: true)
+        return AddedRecord(isEvent: false, title: item.title, start: item.start ?? item.end,
+                           itemID: reminder.calendarItemIdentifier)
     }
 }
