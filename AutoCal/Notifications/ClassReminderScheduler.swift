@@ -118,7 +118,7 @@ enum ClassReminderScheduler {
     /// 5 秒後響一則測試通知，確認權限和橫幅都正常。
     static func sendTest() async {
         let content = UNMutableNotificationContent()
-        content.title = "AutoCal 測試通知"
+        content.title = "記吧 測試通知"
         content.body = "看到這則，代表上課提醒會正常響。"
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)

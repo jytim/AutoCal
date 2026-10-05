@@ -19,7 +19,7 @@ struct ShareRootView: View {
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("AutoCal")
+                .navigationTitle("記吧")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {

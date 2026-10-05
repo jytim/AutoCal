@@ -104,7 +104,7 @@ final class ConflictChecker {
         let df = DateFormatter()
         df.locale = Locale(identifier: "zh_TW")
         df.dateFormat = "M/d HH:mm"
-        var lines = ["【AutoCal 衝突紀錄】"]
+        var lines = ["【記吧 衝突紀錄】"]
         if let s = item.aiStart {
             lines.append("AI 原本解析時間：\(df.string(from: s))")
         }

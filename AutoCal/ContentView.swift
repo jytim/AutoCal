@@ -123,7 +123,7 @@ struct ContentView: View {
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
             }
-            .navigationTitle("AutoCal")
+            .navigationTitle("記吧")
             .safeAreaInset(edge: .bottom) {
                 if !vm.items.isEmpty {
                     ReviewAddBar(items: vm.items) { Task { await vm.save() } }

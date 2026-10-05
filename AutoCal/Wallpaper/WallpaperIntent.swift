@@ -13,7 +13,7 @@ struct TodayWallpaperIntent: AppIntent {
         guard let data = WallpaperRenderer.png() else {
             throw WallpaperError.renderFailed
         }
-        return .result(value: IntentFile(data: data, filename: "AutoCal-wallpaper.png", type: .png))
+        return .result(value: IntentFile(data: data, filename: "JustAdd-wallpaper.png", type: .png))
     }
 }
 

@@ -59,7 +59,7 @@ struct WebSearchService {
         guard let url = URL(string: urlString) else { return "" }
         var req = URLRequest(url: url)
         req.timeoutInterval = 10
-        req.setValue("Mozilla/5.0 (iPhone) AutoCal", forHTTPHeaderField: "User-Agent")
+        req.setValue("Mozilla/5.0 (iPhone) JustAdd", forHTTPHeaderField: "User-Agent")
         let (data, _) = try await URLSession.shared.data(for: req)
         guard let html = String(data: data, encoding: .utf8) else { return "" }
         return Self.htmlToText(html)

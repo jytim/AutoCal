@@ -6,7 +6,7 @@ struct ShareLogView: View {
 
     var body: some View {
         ScrollView {
-            Text(text.isEmpty ? "還沒有紀錄。從別的 App 分享一次內容給 AutoCal 後，再回來看。" : text)
+            Text(text.isEmpty ? "還沒有紀錄。從別的 App 分享一次內容給記吧後，再回來看。" : text)
                 .font(.system(size: 12, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()

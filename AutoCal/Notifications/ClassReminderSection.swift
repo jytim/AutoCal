@@ -36,7 +36,7 @@ struct ClassReminderSection: View {
                 .disabled(testSent)
             }
             if denied {
-                Text("通知權限沒有開，請到 iOS「設定」→「通知」→ AutoCal 開啟。")
+                Text("通知權限沒有開，請到 iOS「設定」→「通知」→ 記吧 開啟。")
                     .font(.footnote).foregroundStyle(.red)
             }
         } header: {
