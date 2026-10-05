@@ -48,7 +48,7 @@ struct WallpaperSettingsView: View {
             } header: {
                 Text("目前的桌布")
             } footer: {
-                Text("這就是捷徑會拿去當桌布的那張（永遠是今天剩下的）。它是靜態圖片，不會即時跳動，右上角寫著幾點更新的。上方約三分之一留給系統時鐘，下方留給手電筒與相機按鈕。")
+                Text("捷徑會拿這張當桌布，是靜態圖片，右上角標示更新時間。")
             }
 
             Section {
@@ -58,7 +58,7 @@ struct WallpaperSettingsView: View {
             } header: {
                 Text("設定自動更新")
             } footer: {
-                Text("你的鎖定畫面需要是一般照片桌布，不能是「照片輪播」。這些步驟依據 iOS 捷徑的公開說明整理，我沒辦法在你的手機上實測，請第一次設定時留意一下結果。")
+                Text("鎖定畫面要是一般照片桌布，不能是「照片輪播」。")
             }
 
             Section {
@@ -69,7 +69,7 @@ struct WallpaperSettingsView: View {
             } header: {
                 Text("建議的觸發時機")
             } footer: {
-                Text("據我所知，「時間」這個時機只能設每天、每週或每月，沒有每小時。一個時機只能設一次，可以多設幾個。")
+                Text("「時間」只能設每天、每週或每月。")
             }
         }
         .navigationTitle("鎖定畫面桌布")

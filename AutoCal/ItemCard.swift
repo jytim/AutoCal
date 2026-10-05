@@ -28,12 +28,6 @@ struct ItemCard: View {
                 Toggle("加入", isOn: $item.isSelected)
                     .fixedSize()
             }
-            Text(item.type == .event
-                 ? "行程：會寫進「行事曆」（沒寫時間就是整天，關掉「整天」可設時間）"
-                 : "待辦：只看截止時間，會寫進「提醒事項」")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
             TextField("標題", text: $item.title)
                 .font(.headline)
                 .textFieldStyle(.roundedBorder)
@@ -60,7 +54,7 @@ struct ItemCard: View {
                                in: (item.start ?? Date())...,
                                displayedComponents: [.date, .hourAndMinute])
                     if item.end == nil {
-                        Text("沒寫結束時間，先抓 1 小時，可以自己改")
+                        Text("預設 1 小時")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -188,7 +182,7 @@ struct ItemCard: View {
                     .foregroundStyle(.blue)
             }
 
-            Text("請選擇處理方式（AI 不會替你決定）")
+            Text("請選擇處理方式")
                 .font(.caption2)
                 .foregroundStyle(item.resolution == .undecided ? .red : .secondary)
 
@@ -250,9 +244,7 @@ struct BatchTimeBar: View {
                     }
                     .buttonStyle(.bordered)
                     .disabled(!isValid)
-                    Text("各項目保留自己的日期，只統一開始和結束時間；不想套用的先取消勾選。套用後可以再逐張修改。")
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
+                    }
                 .padding(.top, 6)
             } label: {
                 Label("全部設為同一時段", systemImage: "clock.arrow.2.circlepath")

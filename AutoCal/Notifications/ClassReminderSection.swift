@@ -42,7 +42,7 @@ struct ClassReminderSection: View {
         } header: {
             Text("課前提醒")
         } footer: {
-            Text("只排未來約三週的課，每次打開 AutoCal 或改課表都會重排。停課的那天不會響。超過三週沒打開 AutoCal，提醒就會用完。")
+            Text("只排未來約三週，打開 App 或改課表時會重排。")
         }
         .onChange(of: enabled) { _, on in Task { await toggled(on) } }
         .onChange(of: lead) { _, _ in Task { await ClassReminderScheduler.refresh(); await updateSummary() } }

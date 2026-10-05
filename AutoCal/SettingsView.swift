@@ -22,8 +22,6 @@ struct SettingsView: View {
                     } label: {
                         Label("鎖定畫面桌布", systemImage: "iphone.gen3")
                     }
-                } footer: {
-                    Text("把今天的課堂、行程與空堂畫成鎖定畫面桌布。")
                 }
 
                 Section {
@@ -32,14 +30,10 @@ struct SettingsView: View {
                     } label: {
                         Label("課堂管理", systemImage: "books.vertical")
                     }
-                } footer: {
-                    Text("新增、匯入、編輯或刪除每週重複的課堂。課堂會顯示在行事曆的日、週檢視，並用於衝突偵測、上課提醒與鎖定畫面桌布。")
                 }
 
                 Section {
                     Toggle("顯示週檢視", isOn: $showWeekView)
-                } footer: {
-                    Text("週檢視可以並排看好幾天的時段與空堂，適合學生。不需要的話關掉，行事曆就只剩日和月。")
                 }
 
                 Section {
@@ -52,13 +46,11 @@ struct SettingsView: View {
                 } header: {
                     Text("日程顯示時段")
                 } footer: {
-                    Text("日程頁一頁看完整天，只顯示這段時間。當天有行程超出這個範圍，會自動往外擴。範圍越大，每小時越矮。")
+                    Text("超出的行程會自動往外擴。")
                 }
 
                 Section {
                     Toggle("行程顏色跟隨行事曆", isOn: $followCalendarColor)
-                } footer: {
-                    Text("開啟：行程用 Apple 行事曆裡該行事曆的顏色（到「行事曆」App 改顏色，這裡就跟著變）。關閉：依標題自動配色。課堂的顏色在編輯課堂時自己選。")
                 }
 
                 ClassReminderSection()
@@ -70,7 +62,7 @@ struct SettingsView: View {
                         Label("分享診斷紀錄", systemImage: "stethoscope")
                     }
                 } footer: {
-                    Text("從別的 App 分享給記吧閃退時，這裡會留下它最後做到哪一步，可以複製給開發者。")
+                    Text("分享閃退時，用來回報問題。")
                 }
 
                 Section {
@@ -80,7 +72,7 @@ struct SettingsView: View {
                 } header: {
                     Text("邀請金鑰")
                 } footer: {
-                    Text("辨識行程需要金鑰，向開發者索取。金鑰只存在這支手機，只會送給官方伺服器。")
+                    Text("向開發者索取，只存在這支手機。")
                 }
 
                 Section {
@@ -90,7 +82,7 @@ struct SettingsView: View {
                 } header: {
                     Text("網路搜尋（Brave API）")
                 } footer: {
-                    Text("到 api-dashboard.search.brave.com 申請免費金鑰。只存在這支手機，不會上傳。")
+                    Text("api-dashboard.search.brave.com 申請，只存在這支手機。")
                 }
 
                 Section {
@@ -103,7 +95,7 @@ struct SettingsView: View {
                 } header: {
                     Text("模型後端")
                 } footer: {
-                    Text("留空則使用官方伺服器。進階用途才需要填自訂位址（不會帶邀請金鑰）。")
+                    Text("留空使用官方伺服器。")
                 }
             }
             .navigationTitle("設定")

@@ -10,7 +10,7 @@ struct CourseManageView: View {
         List {
             if store.courses.isEmpty {
                 Section {
-                    Text("還沒有課堂。按右上角 ＋ 手動新增，或從課表截圖匯入。")
+                    Text("還沒有課堂，按右上角 ＋ 新增。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

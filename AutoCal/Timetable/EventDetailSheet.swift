@@ -44,9 +44,7 @@ struct EventDetailSheet: View {
                         Button(role: .destructive) { onDelete() } label: {
                             Label("刪除整門課", systemImage: "trash")
                         }
-                    } footer: {
-                        Text("課堂只存在 AutoCal 的課表，不會出現在行事曆。")
-                    }
+                }
                 }
             }
             .navigationTitle(event.isCourse ? "課堂詳情" : "行程詳情")

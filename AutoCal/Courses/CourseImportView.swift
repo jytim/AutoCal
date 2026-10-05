@@ -78,8 +78,6 @@ struct CourseImportView: View {
                     DatePicker("學期最後一天", selection: $termEnd, displayedComponents: .date)
                 } header: {
                     Text("學期範圍")
-                } footer: {
-                    Text("每門課會在這段期間內每週重複。課堂只存在 AutoCal 的課表，不會加進行事曆。")
                 }
 
                 if !pendingColumns.isEmpty {
@@ -101,10 +99,8 @@ struct CourseImportView: View {
                             }
                         }
                     } header: {
-                        Text("沒有星期標題的截圖：整欄一起設定")
-                    } footer: {
-                        Text("App 依方塊的左右位置，把同一欄（同一天）的課整理在一起，星期依「最左邊是週一」推算。對照截圖，不對就改這一欄的星期，整欄一起換，不用一堂一堂改。")
-                    }
+                        Text("每一欄的星期（最左邊是週一）")
+                }
                 }
 
                 if guessedCount > 0 {
@@ -115,7 +111,7 @@ struct CourseImportView: View {
                             Label("對照截圖後，全部確認（\(guessedCount)）", systemImage: "checkmark.seal")
                         }
                     } footer: {
-                        Text("\(guessedCount) 堂課的截圖沒有星期標題，星期是依欄位位置推算的（最左邊是週一、依序往右）。請看一眼截圖，沒問題就按一次全部確認；不對的可以個別改星期。")
+                        Text("星期是依欄位推算的，請對照截圖看一眼。")
                     }
                 }
 
@@ -162,8 +158,6 @@ struct CourseImportView: View {
                     }
                 } header: {
                     Text(headerText)
-                } footer: {
-                    Text("請對照截圖確認星期和節次。沒有星期標題的截圖，星期是推測的，要逐筆確認或改選後才能加入。")
                 }
             }
             .navigationTitle("匯入課表")
