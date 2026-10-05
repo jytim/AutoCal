@@ -72,6 +72,17 @@ struct ShareRootView: View {
         return "正在辨識截圖…"
     }
 
+    /// 分享內容只有一個網址（前後可能有標題文字）時，取出那個網址。
+    static func sharedURL(_ text: String) -> URL? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let det = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        let links = det.matches(in: t, range: NSRange(t.startIndex..., in: t)).compactMap(\.url)
+            .filter { ["http", "https"].contains($0.scheme?.lowercased() ?? "") }
+        // 只有一個網址、而且文字大部分就是網址，才當成「分享網頁」
+        guard links.count == 1, let u = links.first, Double(u.absoluteString.count) >= Double(t.count) * 0.5 else { return nil }
+        return u
+    }
+
     private func analyze() async {
         ShareLog.write("開始辨識")
         do {
@@ -80,7 +91,15 @@ struct ShareRootView: View {
             case .image(let data, let mime):
                 result = try await llm.parse(imageData: data, mimeType: mime)
             case .text(let text):
-                result = try await llm.parse(text: text)
+                // 從 Safari 等 App 分享網頁時只會收到網址：去抓那一頁的文字再辨識
+                if let url = Self.sharedURL(text),
+                   let page = try? await WebSearchService.fetchPageText(url.absoluteString), page.count > 40 {
+                    ShareLog.write("抓到網頁文字 \(page.count) 字")
+                    result = try await llm.extractFromWeb(query: "這個網頁裡的活動（使用者分享的網址：\(url.absoluteString)）",
+                                                          snippets: "", pages: String(page.prefix(8000)))
+                } else {
+                    result = try await llm.parse(text: text)
+                }
             case .none:
                 message = "找不到可辨識的內容"; phase = .failed; return
             }

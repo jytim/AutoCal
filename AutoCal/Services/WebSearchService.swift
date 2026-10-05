@@ -1,7 +1,7 @@
 import Foundation
 
-/// 用 Brave 搜尋 API 在網路上找活動資訊，抓取前幾筆結果的內容，
-/// 再交給 LLM 抽出行程 / 待辦。搜尋與抓取都在手機端進行。
+/// 一句話上網找活動：搜尋在記吧的伺服器上做（Brave 金鑰只放在伺服器），
+/// 伺服器回傳搜尋摘要與前幾個網頁的文字，再交給模型抽出行程 / 待辦。
 struct WebSearchService {
 
     enum SearchError: LocalizedError {
@@ -10,85 +10,52 @@ struct WebSearchService {
         case noResults
         var errorDescription: String? {
             switch self {
-            case .noKey: return "尚未設定 Brave 搜尋金鑰（請到設定填入）"
-            case .requestFailed(let s): return "搜尋失敗：\(s)"
+            case .noKey: return "尚未設定邀請金鑰（請到設定填入）"
+            case .requestFailed(let s): return s
             case .noResults: return "網路上找不到相關結果"
             }
         }
     }
 
-    struct Result {
-        let title: String
-        let url: String
-        let description: String
+    private struct Response: Decodable {
+        struct Item: Decodable { let title: String; let url: String; let description: String? }
+        struct Page: Decodable { let url: String; let text: String }
+        let results: [Item]?
+        let pages: [Page]?
+        let error: String?
     }
 
     private let llm = LLMClient()
 
     /// 以自然語言查詢網路，回傳可排入的 ParsedItem。
     func search(query: String, now: Date = Date()) async throws -> [ParsedItem] {
-        guard let key = AppConfig.braveAPIKey, !key.isEmpty else { throw SearchError.noKey }
-
-        let results = try await braveSearch(query: query, key: key)
-        guard !results.isEmpty else { throw SearchError.noResults }
-
-        // 同時抓前兩筆結果的頁面內容，補充摘要（摘要常常沒有完整日期）。
-        let topURLs = results.prefix(2).map(\.url)
-        let pages: [String] = await withTaskGroup(of: String?.self) { group in
-            for u in topURLs {
-                group.addTask {
-                    guard let text = try? await Self.fetchPageText(u), !text.isEmpty else { return nil }
-                    return "【來源：\(u)】\n" + String(text.prefix(3500))
-                }
-            }
-            var out: [String] = []
-            for await r in group { if let r { out.append(r) } }
-            return out
-        }
-
-        let snippetBlock = results.prefix(5).map {
-            "・\($0.title)\n  \($0.description)\n  \($0.url)"
-        }.joined(separator: "\n")
-        let pageBlock = pages.joined(separator: "\n\n")
-
-        return try await llm.extractFromWeb(query: query,
-                                            snippets: snippetBlock,
-                                            pages: pageBlock,
-                                            now: now)
-    }
-
-    // MARK: - Brave API
-
-    private func braveSearch(query: String, key: String) async throws -> [Result] {
-        var comp = URLComponents(string: "https://api.search.brave.com/res/v1/web/search")!
-        comp.queryItems = [
-            .init(name: "q", value: query),
-            .init(name: "count", value: "5"),
-            .init(name: "country", value: "tw"),
-            .init(name: "search_lang", value: "zh-hant")
-        ]
-        var req = URLRequest(url: comp.url!)
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue(key, forHTTPHeaderField: "X-Subscription-Token")
-        req.timeoutInterval = 30
+        guard let key = AppConfig.gatewayKey else { throw SearchError.noKey }
+        var req = URLRequest(url: AppConfig.gatewayURL.appendingPathComponent("search"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = 45
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["query": query])
 
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse else {
-            throw SearchError.requestFailed("無回應")
+        let decoded = try? JSONDecoder().decode(Response.self, from: data)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            throw SearchError.requestFailed(decoded?.error ?? (code == 401 ? "邀請金鑰無效" : "搜尋失敗（\(code)）"))
         }
-        guard (200..<300).contains(http.statusCode) else {
-            let msg = String(data: data, encoding: .utf8) ?? ""
-            throw SearchError.requestFailed("HTTP \(http.statusCode) \(msg.prefix(200))")
-        }
+        let results = decoded?.results ?? []
+        guard !results.isEmpty else { throw SearchError.noResults }
 
-        let decoded = try JSONDecoder().decode(BraveResponse.self, from: data)
-        return (decoded.web?.results ?? []).map {
-            Result(title: $0.title, url: $0.url, description: $0.description ?? "")
-        }
+        let snippetBlock = results.prefix(6).map {
+            "・\($0.title)\n  \($0.description ?? "")\n  \($0.url)"
+        }.joined(separator: "\n")
+        let pageBlock = (decoded?.pages ?? []).map { "【來源：\($0.url)】\n" + String($0.text.prefix(4000)) }
+            .joined(separator: "\n\n")
+        return try await llm.extractFromWeb(query: query, snippets: snippetBlock, pages: pageBlock, now: now)
     }
 
     /// 抓網頁並粗略轉成純文字（去標籤、去 script/style）。
-    private static func fetchPageText(_ urlString: String) async throws -> String {
+    static func fetchPageText(_ urlString: String) async throws -> String {
         guard let url = URL(string: urlString) else { return "" }
         var req = URLRequest(url: url)
         req.timeoutInterval = 10
@@ -114,13 +81,5 @@ struct WebSearchService {
         s = s.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
         s = s.replacingOccurrences(of: "(\\s*\\n\\s*){2,}", with: "\n", options: .regularExpression)
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // MARK: - Brave 回應結構
-
-    private struct BraveResponse: Decodable {
-        struct Web: Decodable { let results: [Item]? }
-        struct Item: Decodable { let title: String; let url: String; let description: String? }
-        let web: Web?
     }
 }

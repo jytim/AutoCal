@@ -63,6 +63,10 @@ struct LLMClient {
         請根據這些資料，抽出和查詢最相關的活動（日期、時間、地點），轉成上面的 JSON 陣列。
         - 只根據資料裡實際出現的資訊，不要自己編造日期。資料裡沒有明確日期就不要輸出那一筆。
         - 若只有日期沒有時間，allDay 設 true。
+        - 時區：資料標明「台灣時間」就直接用；寫的是當地時間或 UTC/GMT，要換算成台北時間（+08:00）。看不出是哪個時區就照寫的時間，不要猜。
+        - location 只能填資料裡明確寫出的地點，不要依常識自己補（例如沒寫賽道就填 null）。
+        - 查詢的是賽程、時程、檔期、場次這類「一系列」活動時，列出資料裡今天以後的每一場，不要只挑一場。
+        - 已經過去的活動（日期早於今天）不要輸出。
         - 把資料來源的重點（例如網址）放進 notes 以便查證（若 JSON 有 notes 欄位則填，否則省略）。
         - 找不到可靠的活動就回空陣列 []。
         """
@@ -73,7 +77,24 @@ struct LLMClient {
             ["role": "system", "content": system],
             ["role": "user", "content": user]
         ]
-        return try await send(messages: messages, maxTokens: 1000)
+        let items = try await send(messages: messages, maxTokens: 1500)
+        return Self.groundWebItems(items, source: snippets + "\n" + pages, now: now)
+    }
+
+    /// 網路搜尋結果的程式把關（模型常自己補地點、也會列出已經過去的場次）：
+    /// - 開始時間早於今天 00:00 的丟掉；
+    /// - 地點必須真的出現在網頁原文裡，找不到就清空。
+    nonisolated static func groundWebItems(_ items: [ParsedItem], source: String, now: Date) -> [ParsedItem] {
+        let today = Calendar.current.startOfDay(for: now)
+        let flat = source.lowercased().filter { !$0.isWhitespace }
+        return items.compactMap { item in
+            var it = item
+            if let s = it.start, s < today { return nil }
+            if let loc = it.location?.lowercased().filter({ !$0.isWhitespace }), !loc.isEmpty, !flat.contains(loc) {
+                it.location = nil
+            }
+            return it
+        }
     }
 
     // MARK: - 共用送出邏輯

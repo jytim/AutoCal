@@ -29,9 +29,4 @@ enum AppConfig {
         }
         return [Endpoint(baseURL: gatewayURL, model: gatewayModel)]
     }
-
-    /// Brave 搜尋 API 金鑰。只存在本機 UserDefaults，不進版本庫。
-    static var braveAPIKey: String? {
-        UserDefaults.standard.string(forKey: "brave.apiKey")
-    }
 }

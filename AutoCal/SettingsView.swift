@@ -4,7 +4,6 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
-    @AppStorage("brave.apiKey") private var braveKey = ""
     @AppStorage(AppConfig.gatewayKeyName, store: AppConfig.sharedDefaults) private var gatewayKey = ""
     @AppStorage("llm.baseURL") private var llmBaseURL = ""
     @AppStorage("llm.model") private var llmModel = ""
@@ -73,16 +72,6 @@ struct SettingsView: View {
                     Text("邀請金鑰")
                 } footer: {
                     Text("向開發者索取，只存在這支手機。")
-                }
-
-                Section {
-                    SecureField("貼上 Brave 搜尋金鑰", text: $braveKey)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } header: {
-                    Text("網路搜尋（Brave API）")
-                } footer: {
-                    Text("api-dashboard.search.brave.com 申請，只存在這支手機。")
                 }
 
                 Section {
