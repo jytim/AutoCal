@@ -65,6 +65,21 @@ struct CourseDraft: Identifiable, Decodable {
     /// 合併時留下的提醒（例如合併後時段變長，可能其實是不同天的兩堂課）。
     var mergeNote: String?
 
+    /// 由「量測」（文字辨識＋像素分析）得到的方塊直接建立，不經過語言模型。
+    init(geo b: GeoBlock) {
+        func hm(_ m: Int?) -> String? { m.map { String(format: "%02d:%02d", $0 / 60, $0 % 60) } }
+        name = b.name
+        weekday = b.weekday
+        start = hm(b.startMinute)
+        end = hm(b.endMinute)
+        startPeriod = b.startPeriod
+        endPeriod = b.endPeriod
+        location = b.location
+        hasHeader = b.hasHeader
+        hasPeriodAxis = true
+        xCenter = b.xCenter
+    }
+
     enum CodingKeys: String, CodingKey {
         case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, axisType, xCenter
     }

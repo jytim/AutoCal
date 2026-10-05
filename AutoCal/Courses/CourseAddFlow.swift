@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UIKit
+import ImageIO
 
 /// 新增課堂的共用流程：手動新增、從截圖匯入（可多張）。
 /// 課表分頁和「設定 → 課堂管理」都用同一套。
@@ -36,7 +37,15 @@ final class CourseAddModel: ObservableObject {
                 guard let data = try await item.loadTransferable(type: Data.self) else {
                     failures.append("第 \(i + 1) 張：讀不到圖片"); continue
                 }
-                var parsed = try await LLMClient().parseCourses(imageData: Self.downscaled(data))
+                // 1) 先用「量測」：文字辨識＋像素分析，離線、不到 1 秒、結果固定；
+                // 2) 量不出來（例如不是格子型課表、看不到時間欄）才退回語言模型。
+                var parsed: [CourseDraft]
+                if let measured = Self.measure(data) {
+                    parsed = measured
+                } else {
+                    importProgress = items.count > 1 ? "正在用模型辨識第 \(i + 1) / \(items.count) 張…" : "改用模型辨識…"
+                    parsed = try await LLMClient().parseCourses(imageData: Self.downscaled(data))
+                }
                 for k in parsed.indices { parsed[k].sourceIndex = i }
                 all += parsed
             } catch {
@@ -51,6 +60,16 @@ final class CourseAddModel: ObservableObject {
             importBox = ImportBox(drafts: merged, sourceCount: items.count,
                                   rawCount: all.count, failures: failures)
         }
+    }
+
+    /// 量測整張課表。每個方塊都量到完整的起訖時間才採用；任何一個量不到就整張退回語言模型。
+    static func measure(_ data: Data) -> [CourseDraft]? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+              let img = CGImageSourceCreateImageAtIndex(src, 0, nil),
+              let blocks = try? TimetableGeometry.analyze(img), !blocks.isEmpty,
+              blocks.allSatisfy({ $0.startMinute != nil && $0.endMinute != nil && !$0.name.isEmpty })
+        else { return nil }
+        return blocks.map { CourseDraft(geo: $0) }
     }
 
     /// 縮小並轉成 JPEG 加快上傳。一般截圖長邊 1600px；很長的長截圖（高是寬的兩倍以上）
