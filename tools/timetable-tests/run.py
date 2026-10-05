@@ -1,4 +1,7 @@
-import json,subprocess,base64,sys
+import json,subprocess,base64,sys,os
+# 模型位址從環境變數讀，不寫進版本庫，例如：TIMETABLE_LLM_URL=http://<主機>:<port>/v1/chat/completions
+URL=os.environ.get('TIMETABLE_LLM_URL') or sys.exit('請先設定環境變數 TIMETABLE_LLM_URL')
+MODEL=os.environ.get('TIMETABLE_LLM_MODEL','')
 P=open('/tmp/p6.txt').read()
 def shrink(f):
     out='s_'+f
@@ -6,9 +9,9 @@ def shrink(f):
     return out
 def call(img):
     b64=base64.b64encode(open(img,'rb').read()).decode()
-    body={"model":"nvidia-Qwen3.6-35B-A3B-NVFP4","max_tokens":2500,"temperature":0,"chat_template_kwargs":{"enable_thinking":False},
+    body={"model":MODEL,"max_tokens":2500,"temperature":0,"chat_template_kwargs":{"enable_thinking":False},
      "messages":[{"role":"system","content":P},{"role":"user","content":[{"type":"text","text":"這是我的課表截圖，請把每一門課抽出來。"},{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,"+b64}}]}]}
-    r=subprocess.run(['curl','-s','-m','180','http://<內網主機A>:8990/v1/chat/completions','-H','Content-Type: application/json','-d',json.dumps(body)],capture_output=True,text=True)
+    r=subprocess.run(['curl','-s','-m','180',URL,'-H','Content-Type: application/json','-d',json.dumps(body)],capture_output=True,text=True)
     c=json.loads(r.stdout)['choices'][0]['message']['content']
     return json.loads(c[c.index('['):c.rindex(']')+1])
 for sc in json.load(open('manifest.json')):
