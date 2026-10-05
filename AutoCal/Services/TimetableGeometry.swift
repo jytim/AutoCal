@@ -13,6 +13,8 @@ struct GeoBlock {
     var endPeriod: String?
     var xCenter: Double          // 方塊水平中心，佔圖片寬度 %
     var weekday: Int             // 0 = 沒有標題或對不上
+    /// 沒有星期標題時的預設推測：課表一律週一在最左、依序往右，依「第幾欄」換算。
+    var gridWeekday: Int?
     var location: String?
     var hasHeader: Bool
     var clippedTop: Bool
@@ -183,9 +185,38 @@ enum TimetableGeometry {
                 if let best = c.min(by: { abs($0.1 - xc) < abs($1.1 - xc) }) { wd = best.0 }
             }
             out.append(GeoBlock(name: name, startMinute: sm, endMinute: em, startPeriod: sp, endPeriod: ep,
-                                xCenter: xc, weekday: wd, location: location, hasHeader: fit != nil, clippedTop: clippedTop, clippedBottom: clippedBottom))
+                                xCenter: xc, weekday: wd, gridWeekday: nil, location: location, hasHeader: fit != nil, clippedTop: clippedTop, clippedBottom: clippedBottom))
         }
+        if fit == nil { assignGridWeekdays(&out, axisRight: axisRight, width: Double(W)) }
         return out.sorted { ($0.xCenter, $0.startMinute ?? 0) < ($1.xCenter, $1.startMinute ?? 0) }
+    }
+
+    /// 沒有星期標題：課表格子是從左邊時間欄右側一路排到圖片右緣、每欄等寬，由左到右是週一、週二…。
+    /// 試 1～7 欄，選方塊位置離欄中心最近的那個（差不多時偏好 5 欄）；擬合太差就不推測。
+    static func assignGridWeekdays(_ blocks: inout [GeoBlock], axisRight: Double, width: Double) {
+        let left = axisRight + 4, right = width - 6, span = right - left
+        guard span > 0, !blocks.isEmpty else { return }
+        let xs = blocks.map { $0.xCenter / 100 * width }
+        func error(_ n: Int) -> Double {
+            let pitch = span / Double(n)
+            return xs.map { x -> Double in
+                let k = min(max(((x - left) / pitch).rounded(.down), 0), Double(n - 1))
+                return abs(x - (left + (k + 0.5) * pitch)) / pitch
+            }.reduce(0, +) / Double(xs.count)
+        }
+        let errs = (1...7).map { ($0, error($0)) }
+        let minErr = errs.map(\.1).min()!
+        // 差不多好的選項裡偏好 5 欄（最常見），其次 7 欄，再來才是其他
+        let ok = errs.filter { $0.1 <= minErr + 0.05 }.map(\.0)
+        let n = [5, 7, 6, 4, 3, 2, 1].first { ok.contains($0) } ?? ok[0]
+        let best: (n: Int, err: Double)? = (n, error(n))
+        guard let b = best, b.err < 0.2 else { return }
+        let pitch = span / Double(b.n)
+        for i in blocks.indices {
+            let x = xs[i]
+            let k = Int(min(max(((x - left) / pitch).rounded(.down), 0), Double(b.n - 1)))
+            blocks[i].gridWeekday = k + 1
+        }
     }
 
     static func median(_ a: [Double]) -> Double { let s = a.sorted(); return s.isEmpty ? 0 : s[s.count / 2] }

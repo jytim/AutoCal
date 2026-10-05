@@ -105,7 +105,7 @@ struct CourseImportView: View {
                             Label("對照截圖後，全部確認（\(guessedCount)）", systemImage: "checkmark.seal")
                         }
                     } footer: {
-                        Text("\(guessedCount) 堂課的截圖沒有星期標題，星期是用方塊的左右位置，對照有標題的截圖推算出來的。請看一眼截圖，沒問題就按一次全部確認；不對的可以個別改星期。")
+                        Text("\(guessedCount) 堂課的截圖沒有星期標題，星期是依欄位位置推算的（最左邊是週一、依序往右）。請看一眼截圖，沒問題就按一次全部確認；不對的可以個別改星期。")
                     }
                 }
 

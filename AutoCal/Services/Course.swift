@@ -60,6 +60,8 @@ struct CourseDraft: Identifiable, Decodable {
     /// 沒有星期標題時，App 依方塊左右位置分出的「欄」（同一張截圖、同一欄 = 同一天）。
     /// 編號由左到右遞增；星期推不出來時，確認畫面請使用者「每一欄選一次」。
     var columnGroup: Int?
+    /// 沒有標題時，依「週一在最左、依序往右」推出的預設星期（由量測得到，不來自模型）。
+    var gridWeekday: Int?
     /// 星期是推測的（來自沒有標題的截圖），確認畫面會標出來。
     var weekdayGuessed = false
     /// 合併時留下的提醒（例如合併後時段變長，可能其實是不同天的兩堂課）。
@@ -78,10 +80,11 @@ struct CourseDraft: Identifiable, Decodable {
         hasHeader = b.hasHeader
         hasPeriodAxis = true
         xCenter = b.xCenter
+        gridWeekday = b.gridWeekday
     }
 
     enum CodingKeys: String, CodingKey {
-        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, axisType, xCenter
+        case name, weekday, startPeriod, endPeriod, start, end, location, hasHeader, axisType, xCenter, gridWeekday
     }
 
     init(from decoder: Decoder) throws {
@@ -95,6 +98,7 @@ struct CourseDraft: Identifiable, Decodable {
         location = Self.flexString(c, .location)
         hasHeader = (try? c.decodeIfPresent(Bool.self, forKey: .hasHeader)) ?? true
         // "period" 節次欄、"time" 只印時間、"none" 看不到那一欄
+        gridWeekday = try? c.decodeIfPresent(Int.self, forKey: .gridWeekday)
         let axis = (try? c.decodeIfPresent(String.self, forKey: .axisType)) ?? "period"
         hasPeriodAxis = axis.lowercased() != "none"
         if let x = try? c.decodeIfPresent(Double.self, forKey: .xCenter) { xCenter = x }
@@ -215,6 +219,10 @@ extension CourseDraft {
                     out[i].weekday = best.w; out[i].weekdayGuessed = true
                 }
             }
+        }
+        // 都沒有標題、錨點可對照：課表由左到右就是週一、週二…，用量測推出的預設星期（仍標成推測，讓使用者看一眼）
+        for i in out.indices where out[i].weekday == 0 && !out[i].hasHeader {
+            if let g = out[i].gridWeekday { out[i].weekday = g; out[i].weekdayGuessed = true }
         }
         return clusterColumns(out)
     }
