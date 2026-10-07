@@ -185,6 +185,125 @@ struct ContentView: View {
     }
 }
 
+private struct GlassPanel: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.glassEffect(
+                .regular,
+                in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+            )
+        } else {
+            let borderColor = colorScheme == .dark
+                ? Color.white.opacity(0.15)
+                : Color.black.opacity(0.08)
+            content
+                .background(
+                    .ultraThinMaterial,
+                    in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(borderColor, lineWidth: 0.5)
+                }
+        }
+    }
+}
+
+private struct PrimaryGlassButton: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let action: () -> Void
+
+    @ViewBuilder
+    var body: some View {
+        if #available(iOS 26, *) {
+            Button(action: action) {
+                buttonLabel
+            }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+        } else {
+            Button(action: action) {
+                buttonLabel
+            }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+        }
+    }
+
+    private var buttonLabel: some View {
+        Label(title, systemImage: systemImage)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 52)
+    }
+}
+
+private struct SecondaryGlassButton: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let action: () -> Void
+
+    @ViewBuilder
+    var body: some View {
+        if #available(iOS 26, *) {
+            Button(action: action) {
+                buttonLabel
+            }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+        } else {
+            Button(action: action) {
+                buttonLabel
+            }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+        }
+    }
+
+    private var buttonLabel: some View {
+        Label(title, systemImage: systemImage)
+            .foregroundStyle(.primary)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 46)
+    }
+}
+
+private struct GlassStylePreview: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("玻璃面板預覽")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text("輸入內容會顯示在這個區域。")
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
+            .padding(20)
+            .modifier(GlassPanel())
+
+            PrimaryGlassButton(title: "解析", systemImage: "wand.and.stars") {}
+
+            SecondaryGlassButton(title: "搜尋網路活動", systemImage: "globe") {}
+        }
+        .padding(20)
+        .background(Color(.systemBackground))
+    }
+}
+
+#Preview("Glass helpers · Light") {
+    GlassStylePreview()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Glass helpers · Dark") {
+    GlassStylePreview()
+        .preferredColorScheme(.dark)
+}
+
 #Preview {
     ContentView()
 }
