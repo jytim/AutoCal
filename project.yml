@@ -28,7 +28,7 @@ targets:
         # 版本與建置編號從 build settings 讀，不寫死（改 CURRENT_PROJECT_VERSION 才會生效）
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleDisplayName: JustAdd
+        CFBundleDisplayName: Just Add
         CFBundleLocalizations: [en, zh-Hant]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
@@ -76,7 +76,7 @@ targets:
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleDisplayName: JustAdd
+        CFBundleDisplayName: Just Add
         CFBundleLocalizations: [en, zh-Hant]
         ITSAppUsesNonExemptEncryption: false
         NSCalendarsFullAccessUsageDescription: "記吧 需要行事曆權限，才能把辨識出的行程加入你的行事曆。"
