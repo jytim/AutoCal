@@ -1,9 +1,10 @@
 # 規格書：新增頁輸入區改版（科技極簡 + Liquid Glass）
 
-狀態：v3.1（使用者已同意方向；已納入 astra 兩輪審閱意見；待最終確認）
-範圍檔案：只有 `AutoCal/ContentView.swift`。`GlassPanel` 修飾器與按鈕樣式輔助全部寫在此檔內，不新增檔案、不修改 `project.yml` 與專案檔（專案以 `project.yml` 產生，新增檔案會牽動專案檔，本次避免）。
+狀態：v3.2（使用者已同意方向並放寬範圍；已納入 astra 兩輪審閱意見；任務 1 已於 2026-10-07 通過）
+範圍檔案：以 `AutoCal/ContentView.swift` 為主。允許新增 Swift 檔，但只能放在 `AutoCal/Home/`，且必須在任務清單中事先列明檔名；不修改 `project.yml`。專案檔 `.xcodeproj` 由 `project.yml` 產生、不進 git，新增檔案後只需重新執行 `xcodegen generate`（主 App 的來源是整個 `AutoCal/` 資料夾，會自動收進；分享擴充不會收進 `AutoCal/Home/`）。任務 1 已寫在 `ContentView.swift` 內的輔助型別可以留在原處，不強制搬移。
 
 變更紀錄：
+- v3.2（2026-10-07）：使用者同意放寬「只能改一個檔案」——v3.1 的前提「新增檔案會牽動專案檔」不成立（專案檔不進 git）；改為允許在 `AutoCal/Home/` 新增事先列明的檔案。新增關卡：任務 2 完成後，Claude 先附淺色與深色截圖給使用者確認視覺方向，才進任務 3。任務 1 通過。本次只放寬範圍與新增關卡，其餘不變，未再送 astra 審閱。
 - v1：iOS 原生群組灰風格（已作廢，使用者覺得色塊太陽春）
 - v2：科技極簡、純黑／純白跟隨系統、Liquid Glass 質感
 - v3.1：依 astra 複審——不新增檔案；`FakeProgressView` 列為強調色例外；驗收 8 改為「啟用／停用條件維持原狀」
@@ -102,13 +103,13 @@
 12. 開啟「降低透明度」、開啟「增加對比」、兩者同時開啟，面板與按鈕文字都清楚可讀。
 
 工程
-13. `git diff` 只涉及 `AutoCal/ContentView.swift`、本規格書與必要的 skill 文件；沒有新增檔案，`project.yml` 與專案檔無改動；`InputViewModel` 無改動。
+13. `git diff` 只涉及 `AutoCal/ContentView.swift`、本規格書、必要的 skill 文件，以及任務清單明列的 `AutoCal/Home/` 新增檔；`project.yml` 無改動；`InputViewModel` 無改動。
 14. 專案以 Xcode 26 成功建置，最低部署目標仍為 iOS 17.0。
 
 ## 5. 任務清單
 
 - 任務 1：在 `ContentView.swift` 內建立 `GlassPanel` 修飾器與按鈕樣式輔助（皆含 iOS 26／舊版兩段式可用性檢查），用 `#Preview` 檢視淺色與深色。
-- 任務 2：套用到新增頁：系統背景、玻璃輸入面板、placeholder、accessibilityLabel、移除說明小字。
+- 任務 2：套用到新增頁：系統背景、玻璃輸入面板、placeholder、accessibilityLabel、移除說明小字。**不新增檔案。** 完成後 Claude 在 iOS 26 模擬器截淺色、深色（有輸入與空白兩種）圖給使用者確認視覺方向，通過才進任務 3。
 - 任務 3：套用主／次要按鈕樣式，修正停用條件（含純換行），確認解析中狀態不變。
 - 任務 4a：建置與版本相容驗證（驗收 13、14，及 iOS 17／26 的執行狀況）。
 - 任務 4b：尺寸、鍵盤、長文字驗證（驗收 10、11）。

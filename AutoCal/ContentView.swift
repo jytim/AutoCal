@@ -87,6 +87,7 @@ final class InputViewModel: ObservableObject {
 struct ContentView: View {
     @StateObject private var vm = InputViewModel()
     @State private var showSettings = false
+    @Environment(\.colorScheme) private var colorScheme
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -123,7 +124,12 @@ struct ContentView: View {
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
             }
+            .background(
+                (colorScheme == .light ? Color(.systemGroupedBackground) : Color(.systemBackground))
+                    .ignoresSafeArea()
+            )
             .navigationTitle("Just Add 記吧")
+            .navigationBarTitleDisplayMode(.large)
             .safeAreaInset(edge: .bottom) {
                 if !vm.items.isEmpty {
                     ReviewAddBar(items: vm.items) { Task { await vm.save() } }
@@ -151,13 +157,21 @@ struct ContentView: View {
 
     private var inputCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("輸入一句話，例如：下週三晚上七點跟小明吃火鍋")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            TextField("想安排的行程或待辦…", text: $vm.text, axis: .vertical)
-                .lineLimit(2...5)
-                .textFieldStyle(.roundedBorder)
+            TextField(
+                "輸入想安排的行程或待辦",
+                text: $vm.text,
+                prompt: Text("下週三晚上七點跟小明吃火鍋")
+                    .foregroundStyle(Color.primary.opacity(0.45)),
+                axis: .vertical
+            )
+                .lineLimit(4...8)
+                .font(.title3)
+                .textFieldStyle(.plain)
+                .accessibilityLabel("輸入想安排的行程或待辦")
                 .focused($inputFocused)
+                .padding(20)
+                .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+                .modifier(GlassPanel())
             if vm.isParsing {
                 FakeProgressView(label: vm.items.isEmpty ? "正在辨識…" : "正在重新檢查…")
             } else {
@@ -186,8 +200,6 @@ struct ContentView: View {
 }
 
 private struct GlassPanel: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
-
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
@@ -195,10 +207,11 @@ private struct GlassPanel: ViewModifier {
                 .regular,
                 in: RoundedRectangle(cornerRadius: 28, style: .continuous)
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.primary.opacity(0.12), lineWidth: 0.75)
+            }
         } else {
-            let borderColor = colorScheme == .dark
-                ? Color.white.opacity(0.15)
-                : Color.black.opacity(0.08)
             content
                 .background(
                     .ultraThinMaterial,
@@ -206,7 +219,7 @@ private struct GlassPanel: ViewModifier {
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(borderColor, lineWidth: 0.5)
+                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.75)
                 }
         }
     }
