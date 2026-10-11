@@ -175,25 +175,15 @@ struct ContentView: View {
             if vm.isParsing {
                 FakeProgressView(label: vm.items.isEmpty ? "正在辨識…" : "正在重新檢查…")
             } else {
-                Button {
+                PrimaryGlassButton(title: "解析", systemImage: "wand.and.stars") {
                     Task { await vm.parse() }
-                } label: {
-                    Label("解析", systemImage: "wand.and.stars")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .disabled(vm.text.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(vm.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                Button {
+                SecondaryGlassButton(title: "搜尋網路活動", systemImage: "globe") {
                     Task { await vm.searchWeb() }
-                } label: {
-                    Label("搜尋網路活動", systemImage: "globe")
-                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .disabled(vm.text.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(vm.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
@@ -258,6 +248,7 @@ private struct SecondaryGlassButton: View {
     let title: LocalizedStringKey
     let systemImage: String
     let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
 
     @ViewBuilder
     var body: some View {
@@ -278,7 +269,7 @@ private struct SecondaryGlassButton: View {
 
     private var buttonLabel: some View {
         Label(title, systemImage: systemImage)
-            .foregroundStyle(.primary)
+            .foregroundStyle(isEnabled ? Color.primary : Color.primary.opacity(0.35))
             .frame(maxWidth: .infinity)
             .frame(minHeight: 46)
     }
